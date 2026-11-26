@@ -21,6 +21,8 @@ PG = bool(DATABASE_URL)
 if PG and ("YOUR_DB_PASSWORD" in DATABASE_URL or "PROJECTREF" in DATABASE_URL):
     raise SystemExit("DATABASE_URL in .env is still the placeholder. Paste your Supabase transaction-pooler connection string.")
 PUBLIC_URL = os.environ.get("TB_PUBLIC_URL", "").rstrip("/")
+if "example.com" in PUBLIC_URL:      # untouched placeholder from .env.example: fall back to the address the browser used
+    print("WARNING: TB_PUBLIC_URL is still the placeholder; ignoring it", flush=True); PUBLIC_URL = ""
 TRUST_PROXY = os.environ.get("TB_TRUST_PROXY") == "1"
 ALLOW_SIGNUP = os.environ.get("TB_ALLOW_SIGNUP", "1") == "1"       # workspace *requests*; owner must approve
 RETENTION_DAYS = int(os.environ.get("TB_RETENTION_DAYS", "60"))
