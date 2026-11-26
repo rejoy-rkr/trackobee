@@ -1,0 +1,19 @@
+name: Build macOS agent (manual)
+# Optional: produces a universal macOS agent binary as a downloadable artifact. Not part of the website deploy
+# (GitHub's macOS runner types change often and must not block publishing). Until it is added to the site's
+# /installers/ folder, the macOS installer uses the system Python 3.
+on: { workflow_dispatch: {} }
+jobs:
+  mac:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          pip install pyinstaller
+          python -m PyInstaller --onefile --clean --target-arch universal2 --name trackobee-agent-macos agent/trackobee_agent.py
+          file dist/trackobee-agent-macos
+      - uses: actions/upload-artifact@v4
+        with: { name: bin-macos, path: dist/trackobee-agent-macos }

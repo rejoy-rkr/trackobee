@@ -48,36 +48,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: bin-linux, path: dist/trackobee-agent-linux }
 
-  mac:
-    strategy: { matrix: { include: [ { os: macos-14, arch: arm64 }, { os: macos-13, arch: x86_64 } ] } }
-    runs-on: ${{ matrix.os }}
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: |
-          pip install pyinstaller
-          python -m PyInstaller --onefile --clean --name trackobee-agent-${{ matrix.arch }} agent/trackobee_agent.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: bin-mac-${{ matrix.arch }}
-          path: dist/trackobee-agent-${{ matrix.arch }}
-
-  mac-universal:
-    needs: mac
-    if: ${{ !cancelled() && needs.mac.result == 'success' }}
-    runs-on: macos-14
-    continue-on-error: true
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { pattern: bin-mac-*, path: bins }
-      - run: lipo -create bins/bin-mac-arm64/trackobee-agent-arm64 bins/bin-mac-x86_64/trackobee-agent-x86_64 -output trackobee-agent-macos
-      - uses: actions/upload-artifact@v4
-        with: { name: bin-macos, path: trackobee-agent-macos }
-
   pages:
-    needs: [windows, linux, mac-universal]
+    needs: [windows, linux]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
@@ -85,7 +57,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         continue-on-error: true
-        with: { pattern: "bin-{windows,linux,macos}", path: installers, merge-multiple: true }
+        with: { pattern: "bin-{windows,linux}", path: installers, merge-multiple: true }
       - name: Assemble site
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}

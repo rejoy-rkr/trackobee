@@ -42,7 +42,7 @@ CRM page (embed.js) ─► local agent (127.0.0.1:47821)        owner/admin acti
 3. **Users** (admin): add sub-admins / read-only users with a temporary password.
 
 ## Agents
-Python agent works everywhere with Python 3. Prebuilt binaries (no Python needed) are produced by the workflow and served from the site under `/installers/`; the generated installers use them automatically. Sign them to avoid SmartScreen/Gatekeeper warnings.
+Python agent works everywhere with Python 3. The deploy workflow builds Windows and Linux binaries (no Python needed) and serves them under `/installers/`; the generated installers use them automatically. macOS uses the system Python until you run the manual "Build macOS agent" workflow. Sign them to avoid SmartScreen/Gatekeeper warnings.
 
 ## Tests
 `supabase/` SQL is covered by a 74-check suite (roles, RLS isolation, ingest, report math, owner flow) run against Postgres; the Edge Function by a 30-check Deno suite with a fake Supabase client.
