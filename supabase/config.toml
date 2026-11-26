@@ -1,4 +1,4 @@
-# Trackobee Supabase config. NOTE: do not run `supabase config push` against an existing project; set auth options in the dashboard (see README).
+# Trackobee Supabase config. `supabase config push` only changes properties declared here (check `supabase config diff` first).
 project_id = "trackobee"
 
 [functions.tb-manage-users]
@@ -6,3 +6,6 @@ verify_jwt = true
 
 [functions.tb-events]
 verify_jwt = false      # callers authenticate with their organization's API key instead of a Supabase JWT
+
+[auth.email]
+enable_confirmations = false    # self-serve sign-up: users get a session immediately (turn on + configure SMTP to require email confirmation)
