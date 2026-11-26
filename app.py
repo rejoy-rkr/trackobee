@@ -444,21 +444,62 @@ cat > "$D/org.json" <<'CFG'
 CFG
 """
     if osname == "linux":
-        exe = f'curl -fsSL "{srv}/agent/bin/linux" -o "$D/agent" && chmod +x "$D/agent"; CMD="$D/agent"' if have("linux") else \
-              f'curl -fsSL "{srv}/agent/trackobee_agent.py" -o "$D/agent.py"; CMD="/usr/bin/env python3 $D/agent.py"'
-        return "trackobee-setup.sh", pre + f"""{exe}
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/trackobee.service" <<UNIT
+        if have("linux"):
+            get, ex, need_py = f'GET "{srv}/agent/bin/linux" "$D/agent" && chmod +x "$D/agent"', '"$D/agent"', ""
+        else:
+            get, ex = f'GET "{srv}/agent/trackobee_agent.py" "$D/agent.py"', '"$(command -v python3) $D/agent.py"'
+            need_py = 'command -v python3 >/dev/null 2>&1 || fail "python3 is required:  sudo apt install python3"'
+        return "trackobee-setup.sh", f"""#!/bin/sh
+# Trackobee agent installer (Linux). Run:  sh trackobee-setup.sh
+SERVER="{srv}"
+say() {{ printf '%s\\n' "$*"; }}
+fail() {{ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }}
+D="$HOME/.trackobee"; mkdir -p "$D" || fail "cannot create $D"
+umask 077
+cat > "$D/org.json" <<'CFG'
+{cfg}
+CFG
+say "[1/4] checking requirements"
+{need_py}
+command -v python3 >/dev/null 2>&1 || fail "python3 is required (used to verify the install):  sudo apt install python3"
+if command -v curl >/dev/null 2>&1; then GET() {{ curl -fsSL "$1" -o "$2"; }}
+elif command -v wget >/dev/null 2>&1; then GET() {{ wget -q "$1" -O "$2"; }}
+else fail "curl or wget is required:  sudo apt install curl"; fi
+say "[2/4] downloading the agent from $SERVER"
+{get} || fail "cannot download from $SERVER . This computer must be able to open that address in a browser. If the Trackobee server runs on another machine, localhost/127.0.0.1 will not work: open the dashboard using the server's real address (or set TB_PUBLIC_URL) and download the installer again."
+say "[3/4] starting the agent (and at every login)"
+EXEC={ex}
+pkill -f "$D/agent" 2>/dev/null; sleep 1
+MODE=""
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+  mkdir -p "$HOME/.config/systemd/user"
+  cat > "$HOME/.config/systemd/user/trackobee.service" <<UNIT
 [Unit]
 Description=Trackobee agent
 [Service]
-ExecStart=$CMD
+Environment=PYTHONUNBUFFERED=1
+ExecStart=$EXEC
 Restart=always
+RestartSec=5
 [Install]
 WantedBy=default.target
 UNIT
-systemctl --user daemon-reload && systemctl --user enable --now trackobee.service
-echo "Trackobee installed. Refresh the website."
+  systemctl --user daemon-reload && systemctl --user enable trackobee.service >/dev/null 2>&1 && systemctl --user restart trackobee.service && MODE="systemd service"
+fi
+if [ -z "$MODE" ]; then      # no systemd user session (minimal or remote login): desktop autostart + start now
+  mkdir -p "$HOME/.config/autostart"
+  printf '[Desktop Entry]\\nType=Application\\nName=Trackobee\\nExec=%s\\nX-GNOME-Autostart-enabled=true\\n' "$EXEC" > "$HOME/.config/autostart/trackobee.desktop"
+  nohup $EXEC >"$D/agent.log" 2>&1 &
+  MODE="desktop autostart"
+fi
+say "[4/4] verifying"
+OK=""
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  if python3 -c "import urllib.request;urllib.request.urlopen('http://127.0.0.1:47821/status',timeout=2)" 2>/dev/null; then OK=1; break; fi
+  sleep 1
+done
+if [ -n "$OK" ]; then say "OK: Trackobee agent is running ($MODE). Now refresh the website."
+else say "The agent did not start. Details:"; journalctl --user -u trackobee -n 15 --no-pager 2>/dev/null; tail -n 15 "$D/agent.log" 2>/dev/null; exit 1; fi
 """
     args = '<string>$D/agent</string>' if have("mac") else '<string>/usr/bin/python3</string><string>$D/agent.py</string>'
     exe = f'curl -fsSL "{srv}/agent/bin/mac" -o "$D/agent" && chmod +x "$D/agent"' if have("mac") else \

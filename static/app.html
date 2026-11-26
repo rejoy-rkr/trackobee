@@ -136,7 +136,9 @@ let DEP;
 async function loadDeploy(){DEP=await api("/api/deploy/info");drawSnip();
  const names={windows:"Windows",mac:"macOS",linux:"Linux"};
  $("instbtns").innerHTML=Object.entries(names).map(([k,n])=>`<a href="/api/deploy/installer/${k}"><button class="pri">Download for ${n}</button></a>`).join("");
- const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe uploaded)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed."}
+ const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe uploaded)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed.";
+ if(/^(localhost|127\.|\[::1\])/.test(location.hostname)){const w=document.createElement("div");w.className="msg err";
+  w.textContent="Warning: you opened the dashboard as "+location.host+". Installers made now point to that address, so they only work on THIS computer. For other PCs, open the dashboard using the server's real address (LAN IP or public domain) or set TB_PUBLIC_URL.";$("instnote").after(w)}}
 function drawSnip(){const s=DEP.server,sec=DEP.crm_secret||"YOUR_CRM_SIGNING_SECRET",id=DEP.public_id,l=$("lang").value;
  $("snip").value=`<script src="${s}/embed.js" data-token="{{ TRACKOBEE_TOKEN_FOR_LOGGED_IN_USER }}" async><\/script>\n<!-- on logout, optionally call: Trackobee.unpair() -->`;
  const code={py:`import base64, hmac, hashlib, time

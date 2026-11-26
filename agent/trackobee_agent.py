@@ -4,7 +4,7 @@ CRM user identity handed over by the Trackobee page (signed token). No screensho
 import ctypes, getpass, json, os, platform, shutil, socket, subprocess, sys, threading, time, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "2.0"
+VERSION = "2.1"
 
 def _config():
     """Per-organization settings (server, agent_token, allowed_origins). Search order: baked-in config.json,
@@ -51,6 +51,34 @@ def local_ip():
     except Exception: return None
     finally: s.close()
 
+def _run(cmd):
+    try: return subprocess.run(cmd, capture_output=True, text=True, timeout=3).stdout.strip()
+    except Exception: return ""
+
+def _linux_state():
+    """Linux desktop: lock state + idle seconds. GNOME/Ubuntu via D-Bus, X11 via xprintidle, else systemd-logind."""
+    for dest, path, meth in (("org.gnome.ScreenSaver", "/org/gnome/ScreenSaver", "org.gnome.ScreenSaver.GetActive"),
+                             ("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver.GetActive")):
+        if "true" in _run(["gdbus", "call", "--session", "--dest", dest, "--object-path", path, "--method", meth]):
+            return "locked", 0
+    idle = None
+    o = _run(["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.IdleMonitor",
+              "--object-path", "/org/gnome/Mutter/IdleMonitor/Core", "--method", "org.gnome.Mutter.IdleMonitor.GetIdletime"])
+    if o:                                   # "(uint64 12345,)" in milliseconds
+        digits = "".join(ch for ch in o.split("uint64")[-1] if ch.isdigit())
+        if digits: idle = int(digits) // 1000
+    if idle is None:
+        x = _run(["xprintidle"])
+        if x.isdigit(): idle = int(x) // 1000
+    sid = os.environ.get("XDG_SESSION_ID") or _run(["loginctl", "show-user", getpass.getuser(), "-p", "Display", "--value"]) or "auto"
+    kv = dict(l.split("=", 1) for l in _run(["loginctl", "show-session", sid, "-p", "LockedHint", "-p", "IdleHint", "-p", "IdleSinceHint"]).splitlines() if "=" in l)
+    if kv.get("LockedHint") == "yes": return "locked", 0
+    if idle is None:
+        idle = 0
+        if kv.get("IdleHint") == "yes" and kv.get("IdleSinceHint", "0") not in ("", "0"):
+            idle = int(time.time() - int(kv["IdleSinceHint"]) / 10**6)
+    return "active", max(idle, 0)
+
 def state_idle():
     """-> ('active'|'locked', idle_seconds)"""
     try:
@@ -66,17 +94,7 @@ def state_idle():
             idle = next(int(l.split("=")[-1]) // 10**9 for l in o.splitlines() if "HIDIdleTime" in l)
             q = subprocess.run(["ioreg", "-n", "Root", "-d1"], capture_output=True, text=True).stdout
             return ("locked" if "CGSSessionScreenIsLocked" in q else "active"), idle
-        o = subprocess.run(["loginctl", "show-session", os.environ.get("XDG_SESSION_ID", "auto"),
-                            "-p", "LockedHint", "-p", "IdleHint", "-p", "IdleSinceHint"],
-                           capture_output=True, text=True).stdout
-        kv = dict(l.split("=", 1) for l in o.splitlines() if "=" in l)
-        if kv.get("LockedHint") == "yes": return "locked", 0
-        idle = 0
-        try: idle = int(subprocess.run(["xprintidle"], capture_output=True, text=True).stdout) // 1000
-        except Exception:
-            if kv.get("IdleHint") == "yes" and kv.get("IdleSinceHint", "0") != "0":
-                idle = int(time.time() - int(kv["IdleSinceHint"]) / 10**6)
-        return "active", idle
+        return _linux_state()
     except Exception:
         return "active", 0
 
