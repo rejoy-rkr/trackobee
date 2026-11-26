@@ -7,7 +7,7 @@
 header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
 header h1{font-size:18px;margin:0}header h1 span{color:var(--ac)}header .sp{flex:1}
 nav{display:flex;gap:4px;padding:8px 16px;overflow-x:auto}
-nav button{border:0;background:none;color:var(--mut);padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit}
+nav button{border:0;background:none;color:var(--mut);padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit;white-space:nowrap}
 nav button.on{background:var(--card);color:var(--fg);border:1px solid var(--line)}
 main{padding:0 16px 32px;max-width:1200px;margin:0 auto}section{display:none}section.on{display:block}
 h2{font-size:15px;margin:20px 0 8px}p.m,.m{color:var(--mut)}
@@ -25,8 +25,10 @@ textarea{width:100%;font:12px ui-monospace,monospace;min-height:110px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
 .fc{padding:10px 12px}.fc b{display:block;margin-bottom:4px}.fc small{color:var(--mut)}.big{font-size:22px;font-weight:700;color:#2e7d32}
 a{color:inherit}.msg{font-size:13px;min-height:18px;margin:6px 0}.err{color:#c62828}.good{color:#2e7d32}
-code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px}
+code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px;word-break:break-all}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.ev-login,.ev-online{color:#2e7d32}.ev-logoff,.ev-offline{color:#9e9e9e}.ev-lock,.ev-unlock{color:#546e7a}.ev-crm_login{color:#1565c0;font-weight:600}.ev-crm_logout{color:#8e24aa;font-weight:600}
+input[type=number]{width:90px}
 </style></head><body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="js/api.js"></script>
@@ -39,12 +41,19 @@ code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px}
  <h2>Availability by facility</h2><div class="grid" id="fac"></div>
  <h2>Live: who is on which system</h2>
  <div class="bar"><input id="q" placeholder="Filter user / host / IP / facility"></div>
- <div class="card"><table><thead><tr><th>CRM user</th><th>Facility</th><th>Computer</th><th>Public IP</th><th>LAN IP</th><th>OS user</th><th>Status</th><th>Idle</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
+ <div class="card"><table><thead><tr><th>Website user</th><th>Facility</th><th>Computer</th><th>Public IP</th><th>LAN IP</th><th>OS user</th><th>Status</th><th>Idle</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
  <h2>Daily report</h2>
  <div class="bar"><input type="date" id="d"><button onclick="load()">Load</button><a id="csv" href="#" onclick="TB.exportCsv($('d').value).catch(e=>alert(e.message));return false">Export CSV</a></div>
  <div class="card"><table><thead><tr><th>User</th><th>Facility</th><th>Computer</th><th>IPs</th><th>First in</th><th>Last seen</th><th>Screen on</th><th>Idle</th><th>Locked</th></tr></thead><tbody id="rep"></tbody></table></div>
- <h2>Login / logout events</h2>
- <div class="card"><table><thead><tr><th>Time</th><th>CRM user</th><th>Facility</th><th>Computer</th><th>IP</th><th>Event</th></tr></thead><tbody id="ev"></tbody></table></div>
+</section>
+
+<section id="s-hist">
+ <h2>Login / logoff history</h2>
+ <p class="m" id="histnote">Every endpoint's session events: sign-in and sign-out of the PC, lock/unlock, going offline/online, and website logins and logouts.</p>
+ <div class="bar"><select id="hr" onchange="loadEvents()"><option value="0">Today</option><option value="3" selected>Last 3 days</option><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
+  <select id="ht" onchange="drawEvents()"><option value="">All events</option><option value="login,logoff">PC sign-in / sign-out</option><option value="lock,unlock">Lock / unlock</option><option value="online,offline">Online / offline</option><option value="crm_login,crm_logout">Website login / logout</option></select>
+  <input id="hq" placeholder="Filter user / computer / IP" oninput="drawEvents()"><button onclick="loadEvents()">Refresh</button><a href="#" onclick="TB.exportEvents(+$('hr').value).catch(e=>alert(e.message));return false">Export CSV</a><span class="m" id="hcnt"></span></div>
+ <div class="card"><table><thead><tr><th>Time</th><th>Event</th><th>Website user</th><th>OS user</th><th>Computer</th><th>Facility</th><th>Public IP</th><th>Source</th><th>Detail</th></tr></thead><tbody id="ev"></tbody></table></div>
 </section>
 
 <section id="s-fac">
@@ -56,22 +65,31 @@ code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px}
 </section>
 
 <section id="s-dep">
- <h2>1. Website embed (runs when a logged-in user opens your site)</h2>
- <p class="m">Add this to every page for logged-in users. It detects the OS, offers the agent install if missing, and links the website user to the PC.</p>
+ <h2>1. Send login / logout events from your website (API)</h2>
+ <p class="m">Works with any website or app, whatever sign-in it uses. When a user signs in or out, your backend makes one call. Trackobee links that user to the PC they are sitting at (by the IP you pass; for an exact link use step 2).</p>
+ <div class="card pad">
+  <p style="margin-top:0"><b>Endpoint</b> <code id="apiurl"></code></p>
+  <p><b>API key</b> <code id="apikey"></code> <span class="m" id="apinote"></span></p>
+  <div class="bar"><b>Example:</b><select id="alang" onchange="drawDeploy()"><option value="curl">curl</option><option value="py">Python</option><option value="js">Node.js</option><option value="php">PHP</option></select></div>
+  <textarea id="apisnip" readonly style="min-height:150px"></textarea>
+  <p class="m">Call it <b>server-side</b> after a successful sign-in (<code>"event":"login"</code>) and on sign-out or session expiry (<code>"event":"logout"</code>). Pass the user's public IP (usually the <code>X-Forwarded-For</code> header). Optional: <code>host</code> (computer name) for an exact link, <code>ts</code> (unix seconds). Form-encoded posts work too. Never put the key in browser code.</p>
+ </div>
+ <h2>2. Exact pairing: website embed (optional)</h2>
+ <p class="m">Add this to pages for signed-in users. It detects the OS, offers the agent install if missing, and links the website user to that exact PC, even when many PCs share one public IP.</p>
  <div class="card pad"><textarea id="snip" readonly></textarea>
   <div class="bar"><b>Token signing code for your backend:</b>
-   <select id="lang" onchange="drawSnip()"><option value="py">Python</option><option value="php">PHP</option><option value="js">Node.js</option></select></div>
+   <select id="lang" onchange="drawDeploy()"><option value="py">Python</option><option value="php">PHP</option><option value="js">Node.js</option></select></div>
   <textarea id="sign" readonly style="min-height:170px"></textarea>
   <div class="msg m" id="secnote"></div></div>
- <h2>2. Endpoint installer (deploy to PCs without the website)</h2>
+ <h2>3. Endpoint installer (deploy to PCs without the website)</h2>
  <p class="m">A ready-to-run script for your organization. Run it on a PC, or push it with GPO / Intune / Jamf / any script runner.</p>
  <div class="card pad"><div class="bar" id="instbtns"></div><div class="msg m" id="instnote"></div>
-  <p class="m">Allowed website origins (where the embed is used) are set under <b>Settings</b>. The installer includes them.</p></div>
+  <p class="m">The website origins you allow under <b>Settings</b> are included in the installer.</p></div>
 </section>
 
 <section id="s-usr">
  <h2>Team</h2>
- <p class="m"><b>Admin</b>: everything, including users and secrets. <b>Sub-admin</b>: facilities, embed and installers, settings, view. <b>Read-only</b>: view dashboards and reports.</p>
+ <p class="m"><b>Admin</b>: everything, including users and secrets. <b>Sub-admin</b>: facilities, integration and installers, settings, view. <b>Read-only</b>: view dashboards, history and reports.</p>
  <div class="card pad"><div class="bar"><input id="un" placeholder="Name"><input id="ue" type="email" placeholder="Email"><input id="up" type="text" placeholder="Temporary password (10+)">
   <select id="ur"><option value="sub_admin">Sub-admin</option><option value="read_only">Read-only</option><option value="admin">Admin</option></select>
   <button class="pri" onclick="addUser()">Add user</button></div><div class="msg err" id="umsg"></div></div>
@@ -81,14 +99,22 @@ code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px}
 <section id="s-set">
  <h2>Organization</h2>
  <div class="card pad"><div class="bar"><input id="on" placeholder="Organization name" style="min-width:260px"><button onclick="saveOrg()">Save name</button></div>
-  <p class="m" style="margin-bottom:4px">Website origins allowed to talk to the agent (one per line), e.g. <code>https://customercentral.co</code></p>
+  <p class="m" style="margin-bottom:4px">Website origins allowed to talk to the agent (one per line), e.g. <code>https://your-website.com</code></p>
   <textarea id="orig" style="min-height:70px"></textarea>
   <div class="bar"><button class="pri" onclick="saveOrg()">Save</button><span class="msg" id="omsg"></span></div></div>
+ <div id="retbox">
+  <h2>Data retention</h2>
+  <div class="card pad"><p class="m" style="margin-top:0">How long history is kept. Minimum 3 days.</p>
+   <div class="bar"><label>Login / logoff history <input type="number" id="ret_e" min="3" max="365"> days</label>
+    <label>Activity data (reports) <input type="number" id="ret_h" min="3" max="90"> days</label>
+    <button class="pri" onclick="saveRet()">Save</button><span class="msg" id="rmsg"></span></div></div>
+ </div>
  <div id="secrets">
   <h2>Keys (admin only)</h2>
   <div class="card pad row">
    <div><b>Agent token</b><p class="m">Installed agents use it to report. Rotating it disconnects installed agents until reinstalled.</p><code id="at"></code><div class="bar" style="margin-top:8px"><button onclick="rot('agent')">Rotate</button></div></div>
-   <div><b>CRM signing secret</b><p class="m">Your backend signs user tokens with it. Keep it server-side only. Rotating requires updating your backend.</p><code id="cs"></code><div class="bar" style="margin-top:8px"><button onclick="rot('crm')">Rotate</button></div></div>
+   <div><b>Website events API key</b><p class="m">Your backend sends login/logout events with it. Server-side only. Rotating requires updating your backend.</p><code id="ak"></code><div class="bar" style="margin-top:8px"><button onclick="rot('api')">Rotate</button></div></div>
+   <div><b>Embed signing secret</b><p class="m">Your backend signs the embed's user token with it. Server-side only.</p><code id="cs"></code><div class="bar" style="margin-top:8px"><button onclick="rot('crm')">Rotate</button></div></div>
   </div></div>
  <h2>My password</h2>
  <div class="card pad"><div class="bar"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (10+)"><button onclick="chpw()">Change</button><span class="msg" id="pmsg"></span></div></div>
@@ -96,17 +122,20 @@ code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px}
 </main>
 <script>
 const $=id=>document.getElementById(id),t=s=>new Date(s*1000).toLocaleTimeString(),m=s=>Math.floor(s/60)+"m";
+const dt=s=>new Date(s*1000).toLocaleString([], {month:"short",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"});
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const LBL={available:"Available",away:"Away",locked:"Locked",offline:"Offline"},RL={admin:"Admin",sub_admin:"Sub-admin",read_only:"Read-only"};
-let ME,LIVE=[],timer;
+const EVL={login:"PC sign-in",logoff:"PC sign-out",lock:"Locked",unlock:"Unlocked",online:"Came online",offline:"Went offline",crm_login:"Website login",crm_logout:"Website logout"};
 const api=(...a)=>TB.api(...a);
+let ME,LIVE=[],EVS=[],DEP,ORG,timer;
 function show(id){document.querySelectorAll("main section").forEach(s=>s.classList.toggle("on",s.id=="s-"+id));
  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.id==id));
- if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac()}
-async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner"){location.href="owner.html";return}$("org").textContent=ME.org;$("who").textContent=ME.name;$("role").textContent=RL[ME.role];
- const tabs=[["dash","Dashboard"],["fac","Facilities"]];
- if(ME.role!="read_only")tabs.push(["dep","Deploy"],["set","Settings"]);
- if(ME.role=="admin")tabs.splice(3,0,["usr","Users"]);
+ if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac();if(id=="hist")loadEvents()}
+async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner"){location.href="owner.html";return}
+ $("org").textContent=ME.org;$("who").textContent=ME.name;$("role").textContent=RL[ME.role];
+ const tabs=[["dash","Dashboard"],["hist","History"],["fac","Facilities"]];
+ if(ME.role!="read_only")tabs.push(["dep","Integrate"],["set","Settings"]);
+ if(ME.role=="admin")tabs.splice(4,0,["usr","Users"]);
  $("nav").innerHTML=tabs.map(([i,n])=>`<button data-id="${i}">${n}</button>`).join("");
  $("nav").onclick=e=>{if(e.target.dataset.id)show(e.target.dataset.id)};
  if(ME.role=="read_only")$("facform").style.display="none";
@@ -116,32 +145,62 @@ async function logout(){await TB.signOut();location.href="login.html"}
 // ---- dashboard
 function drawLive(){const q=$("q").value.toLowerCase(),f={};
  LIVE.forEach(r=>{(f[r.facility]??={available:0,away:0,locked:0,offline:0})[r.state]++});
- $("fac").innerHTML=Object.entries(f).sort().map(([n,c])=>`<div class="card fc"><b>${esc(n)}</b><span class="big">${c.available}</span> available<br><small>${c.away} away · ${c.locked} locked · ${c.offline} offline</small></div>`).join("")||'<p class="m">No agents reporting yet. See the Deploy tab.</p>';
- $("live").innerHTML=LIVE.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>`<tr><td>${esc(r.crm_user||"- not paired")}</td><td>${esc(r.facility)}</td><td>${esc(r.host)}</td><td>${esc(r.pub_ip)}</td><td>${esc(r.ip)}</td><td class="${r.mismatch?"warn":""}">${esc(r.os_user)}${r.mismatch?" ⚠":""}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${m(r.idle)}</td><td>${t(r.last_seen)}</td></tr>`).join("")}
+ $("fac").innerHTML=Object.entries(f).sort().map(([n,c])=>`<div class="card fc"><b>${esc(n)}</b><span class="big">${c.available}</span> available<br><small>${c.away} away · ${c.locked} locked · ${c.offline} offline</small></div>`).join("")||'<p class="m">No agents reporting yet. See the Integrate tab.</p>';
+ $("live").innerHTML=LIVE.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>`<tr><td>${esc(r.crm_user||"- not linked")}</td><td>${esc(r.facility)}</td><td>${esc(r.host)}</td><td>${esc(r.pub_ip)}</td><td>${esc(r.ip)}</td><td class="${r.mismatch?"warn":""}">${esc(r.os_user)}${r.mismatch?" ⚠":""}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${m(r.idle)}</td><td>${t(r.last_seen)}</td></tr>`).join("")}
 async function live(){try{LIVE=await api("/api/live");drawLive()}catch(e){}}
-async function load(){const d=$("d").value;
- const r=await api("/api/report?date="+d);
- $("rep").innerHTML=r.map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.facility||"Unmapped")}</td><td>${esc(a.host)}</td><td>${esc(a.ips.join(", "))}</td><td>${t(a.first)}</td><td>${t(a.last)}</td><td>${m(a.screen_on)}</td><td>${m(a.idle)}</td><td>${m(a.locked)}</td></tr>`).join("");
- const e=await api("/api/events?date="+d);
- $("ev").innerHTML=e.map(x=>`<tr><td>${t(x.ts)}</td><td>${esc(x.crm_user||x.os_user)}</td><td>${esc(x.facility||"")}</td><td>${esc(x.host)}</td><td>${esc(x.pub_ip)}</td><td>${esc(x.type)}</td></tr>`).join("");
- }
+async function load(){const r=await api("/api/report?date="+$("d").value);
+ $("rep").innerHTML=r.map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.facility||"Unmapped")}</td><td>${esc(a.host)}</td><td>${esc(a.ips.join(", "))}</td><td>${t(a.first)}</td><td>${t(a.last)}</td><td>${m(a.screen_on)}</td><td>${m(a.idle)}</td><td>${m(a.locked)}</td></tr>`).join("")}
+// ---- login / logoff history
+async function loadEvents(){EVS=await api("/api/events?days="+$("hr").value);drawEvents();
+ try{const o=await api("/api/org");$("histnote").textContent=`Every endpoint's session events: PC sign-in and sign-out, lock/unlock, offline/online, and website logins and logouts. Kept for ${o.event_retention_days} days.`}catch(e){}}
+function drawEvents(){const ty=$("ht").value?$("ht").value.split(","):null,q=$("hq").value.toLowerCase();
+ const rows=EVS.filter(e=>(!ty||ty.includes(e.type))&&(!q||JSON.stringify(e).toLowerCase().includes(q)));
+ $("hcnt").textContent=rows.length+" event"+(rows.length==1?"":"s");
+ $("ev").innerHTML=rows.map(x=>`<tr><td>${dt(x.ts)}</td><td class="ev-${esc(x.type)}">${esc(EVL[x.type]||x.type)}</td><td>${esc(x.crm_user||"")}</td><td>${esc(x.os_user||"")}</td><td>${esc(x.host||"")}</td><td>${esc(x.facility||"")}</td><td>${esc(x.pub_ip||"")}</td><td>${esc(x.source||"")}</td><td>${esc(x.detail||"")}</td></tr>`).join("")||'<tr><td class="m">No events in this range.</td></tr>'}
 // ---- facilities
 const canManage=()=>ME.role!="read_only";
 function drawFac(l){$("fl").innerHTML=l.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.cidr)}</td><td>${canManage()?`<button onclick="delFac(${+x.id})">Remove</button>`:""}</td></tr>`).join("")||'<tr><td class="m">No facilities yet.</td></tr>'}
 async function loadFac(){drawFac(await api("/api/facilities"))}
 async function addFac(){$("facmsg").textContent="";try{drawFac(await api("/api/facilities","POST",{name:$("fn").value,cidr:$("fc").value}));$("fn").value=$("fc").value=""}catch(e){$("facmsg").textContent=e.message}}
 async function delFac(id){drawFac(await api("/api/facilities?id="+id,"DELETE"))}
-// ---- deploy
-let DEP;
-async function loadDeploy(){DEP=await api("/api/deploy/info");drawSnip();
+// ---- integrate
+async function loadDeploy(){DEP=await api("/api/deploy/info");drawDeploy();
  const names={windows:"Windows",mac:"macOS",linux:"Linux"};
  $("instbtns").innerHTML=Object.entries(names).map(([k,n])=>`<button class="pri" onclick="TB.downloadInstaller('${k}').catch(e=>alert(e.message))">Download for ${n}</button>`).join("");
- const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe uploaded)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed.";
- if(/^(localhost|127\.|\[::1\])/.test(location.hostname)){const w=document.createElement("div");w.className="msg err";
-  w.textContent="Warning: you opened the dashboard as "+location.host+". Installers made now point to that address, so they only work on THIS computer. For other PCs, open the dashboard using the server's real address (LAN IP or public domain) or set TB_PUBLIC_URL.";$("instnote").after(w)}}
-function drawSnip(){const s=DEP.server,sec=DEP.crm_secret||"YOUR_CRM_SIGNING_SECRET",id=DEP.public_id,l=$("lang").value;
- $("snip").value=`<script src="${s}/embed.js" data-token="{{ TRACKOBEE_TOKEN_FOR_LOGGED_IN_USER }}" async><\/script>\n<!-- on logout, optionally call: Trackobee.unpair() -->`;
- const code={py:`import base64, hmac, hashlib, time
+ const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python 3")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed.";
+ if(/^(localhost|127\.|\[::1\])/.test(location.hostname)&&!$("instnote").nextSibling.className?.includes("err")){const w=document.createElement("div");w.className="msg err";
+  w.textContent="Warning: you opened the dashboard as "+location.host+". Installers made now point to that address, so they only work on THIS computer.";$("instnote").after(w)}}
+function drawDeploy(){const s=DEP.server,sec=DEP.crm_secret||"YOUR_EMBED_SIGNING_SECRET",id=DEP.public_id,ep=DEP.events_url,key=DEP.api_key||"YOUR_API_KEY";
+ $("apiurl").textContent=ep;$("apikey").textContent=DEP.api_key||"(only admins can see the key)";$("apinote").textContent=DEP.api_key?"Keep it secret.":"Ask an admin for the key and replace YOUR_API_KEY below.";
+ const al=$("alang").value;
+ $("apisnip").value={curl:`curl -X POST "${ep}" \\
+  -H "Authorization: Bearer ${key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"event":"login","user":"priya","ip":"203.0.113.5"}'
+# on sign-out: -d '{"event":"logout","user":"priya"}'`,
+ py:`import requests
+def trackobee(event, user, ip=None):          # event: "login" or "logout"
+    requests.post("${ep}", timeout=5,
+        headers={"Authorization": "Bearer ${key}"},
+        json={"event": event, "user": user, "ip": ip})
+# after a successful sign-in:  trackobee("login",  username, client_ip)
+# on sign-out / session end:   trackobee("logout", username)`,
+ js:`async function trackobee(event, user, ip) {   // event: "login" or "logout"
+  await fetch("${ep}", { method: "POST",
+    headers: { Authorization: "Bearer ${key}", "Content-Type": "application/json" },
+    body: JSON.stringify({ event, user, ip }) });
+}
+// after sign-in: trackobee("login", username, clientIp);  on sign-out: trackobee("logout", username)`,
+ php:`function trackobee($event, $user, $ip = null) {   // $event: "login" or "logout"
+  $ch = curl_init("${ep}");
+  curl_setopt_array($ch, [CURLOPT_POST => 1, CURLOPT_RETURNTRANSFER => 1, CURLOPT_TIMEOUT => 5,
+    CURLOPT_HTTPHEADER => ["Authorization: Bearer ${key}", "Content-Type: application/json"],
+    CURLOPT_POSTFIELDS => json_encode(["event" => $event, "user" => $user, "ip" => $ip])]);
+  curl_exec($ch);
+}`}[al];
+ $("snip").value=`<script src="${s}/embed.js" data-token="{{ TRACKOBEE_TOKEN_FOR_SIGNED_IN_USER }}" async><\/script>\n<!-- on sign-out, optionally call: Trackobee.unpair() -->`;
+ const l=$("lang").value;
+ $("sign").value={py:`import base64, hmac, hashlib, time
 ORG_ID = "${id}"
 SECRET = "${sec}"   # keep server-side only
 def trackobee_token(username, ttl=86400):
@@ -158,8 +217,8 @@ const ORG_ID = "${id}", SECRET = "${sec}"; // server-side only
 function trackobeeToken(user, ttl = 86400) {
   const p = Buffer.from(user + ":" + (Math.floor(Date.now()/1000) + ttl)).toString("base64url");
   return ORG_ID + "." + p + "." + crypto.createHmac("sha256", SECRET).update(ORG_ID + "." + p).digest("hex");
-}`}[l];$("sign").value=code;
- $("secnote").textContent=DEP.crm_secret?"The signing secret is shown because you are an admin. Never put it in browser-side code.":"Ask an admin for the CRM signing secret and replace YOUR_CRM_SIGNING_SECRET."}
+}`}[l];
+ $("secnote").textContent=DEP.crm_secret?"The signing secret is shown because you are an admin. Never put it in browser-side code.":"Ask an admin for the embed signing secret and replace YOUR_EMBED_SIGNING_SECRET."}
 // ---- users
 async function loadUsers(){drawUsers(await api("/api/users"))}
 function drawUsers(l){$("ul").innerHTML=l.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td>
@@ -171,10 +230,15 @@ async function upd(id,b){try{drawUsers(await api("/api/users/"+id,"PATCH",b))}ca
 async function resetPw(id){const p=prompt("New temporary password (min 10 characters):");if(p)upd(id,{password:p})}
 async function delUser(id){if(confirm("Delete this user?"))try{drawUsers(await api("/api/users/"+id,"DELETE"))}catch(e){alert(e.message)}}
 // ---- settings
-async function loadOrg(){const o=await api("/api/org");$("on").value=o.name;$("orig").value=o.allowed_origins.split(",").join("\n");
- $("secrets").style.display=o.agent_token?"block":"none";$("at").textContent=o.agent_token||"";$("cs").textContent=o.crm_secret||"";$("on").disabled=ME.role!="admin"}
-async function saveOrg(){const b=$("omsg");b.textContent="";b.className="msg";try{await api("/api/org","POST",{name:$("on").value,allowed_origins:$("orig").value});b.textContent="Saved";b.classList.add("good")}catch(e){b.textContent=e.message;b.classList.add("err")}}
-async function rot(w){if(!confirm("Rotate this key? "+(w=="agent"?"Installed agents stop reporting until reinstalled.":"Your backend must be updated with the new secret.")))return;await api("/api/org/rotate/"+w,"POST",{});loadOrg()}
-async function chpw(){const b=$("pmsg");b.className="msg";try{await api("/api/me/password","POST",{old:$("op").value,new:$("np").value});b.textContent="Changed";b.classList.add("good");$("op").value=$("np").value=""}catch(e){b.textContent=e.message;b.classList.add("err")}}
+async function loadOrg(){ORG=await api("/api/org");$("on").value=ORG.name;$("orig").value=ORG.allowed_origins.split(",").join("\n");
+ $("secrets").style.display=ORG.agent_token?"block":"none";$("retbox").style.display=ME.role=="admin"?"block":"none";
+ $("at").textContent=ORG.agent_token||"";$("cs").textContent=ORG.crm_secret||"";$("ak").textContent=ORG.api_key||"";
+ $("ret_e").value=ORG.event_retention_days;$("ret_h").value=ORG.hb_retention_days;$("on").disabled=ME.role!="admin"}
+function flash(id,text,good){const b=$(id);b.textContent=text;b.className="msg "+(good?"good":"err")}
+async function saveOrg(){try{await api("/api/org","POST",{name:$("on").value,allowed_origins:$("orig").value});flash("omsg","Saved",1)}catch(e){flash("omsg",e.message)}}
+async function saveRet(){try{await api("/api/retention","POST",{events:+$("ret_e").value,hb:+$("ret_h").value});flash("rmsg","Saved",1)}catch(e){flash("rmsg",e.message)}}
+async function rot(w){const warn={agent:"Installed agents stop reporting until reinstalled.",api:"Your backend must be updated with the new key.",crm:"Your backend must be updated with the new secret."}[w];
+ if(!confirm("Rotate this key? "+warn))return;await api("/api/org/rotate/"+w,"POST",{});loadOrg()}
+async function chpw(){try{await api("/api/me/password","POST",{old:$("op").value,new:$("np").value});flash("pmsg","Changed",1);$("op").value=$("np").value=""}catch(e){flash("pmsg",e.message)}}
 init().catch(e=>{document.body.innerHTML='<p style="padding:20px">'+esc(e.message)+'</p>'});
 </script></body></html>

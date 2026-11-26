@@ -17,6 +17,7 @@
     const s = await sb.auth.getSession(); if (!s.data || !s.data.session) return { status: "anon" };
     const r = await sb.rpc("tb_my_status");
     if (r.error) { if (/jwt|permission denied|not authenticated/i.test(r.error.message || "")) return { status: "anon" }; fail(r.error); }
+    if (r.data && r.data.status === "none") return ok(await sb.rpc("tb_claim_workspace"));   // signed up with org details, workspace not created yet
     return r.data;
   }
   async function fn(body) {                       // privileged actions run in the tb-manage-users edge function
@@ -44,8 +45,10 @@
     if (p === "/api/live") return ok(await sb.rpc("tb_live_status"));
     if (p === "/api/report") { const [a, b] = dayRange(q.get("date"));
       return ok(await sb.rpc("tb_daily_report", { p_start: a, p_end: b })).map(r => ({ user: r.usr, host: r.host, facility: r.facility, ips: r.ips, first: r.first_ts, last: r.last_ts, screen_on: r.screen_on, idle: r.idle, locked: r.locked })); }
-    if (p === "/api/events") { const [a, b] = dayRange(q.get("date"));
-      return ok(await sb.from("tb_ev").select("*").gte("ts", a).lt("ts", b).order("ts", { ascending: false }).limit(500)); }
+    if (p === "/api/events") {
+      const days = Number(q.get("days") || 0), now = Math.floor(Date.now() / 1000);
+      const from = days > 0 ? now - days * 86400 : Math.floor(new Date(new Date().toDateString()) / 1000);
+      return ok(await sb.from("tb_ev").select("*").gte("ts", from).order("ts", { ascending: false }).limit(2000)); }
     if (p === "/api/facilities") {
       if (method === "POST") { const r = await sb.from("tb_facilities").upsert({ org_id: ORG_ID, name: (body.name || "").trim().slice(0, 80), cidr: (body.cidr || "").trim() }, { onConflict: "org_id,cidr" });
         if (r.error) fail(/cidr|inet|network/i.test(r.error.message) ? "invalid IP or CIDR" : r.error.message); }
@@ -53,10 +56,11 @@
       return facilities(); }
     if (p === "/api/org") {
       if (method === "POST") { ok(await sb.rpc("tb_update_org", { p_name: body.name || null, p_origins: body.allowed_origins || "" })); return { ok: true }; }
-      const o = ok(await sb.from("tb_orgs").select("name,public_id,allowed_origins").limit(1).maybeSingle());
-      const s = ok(await sb.from("tb_org_secrets").select("agent_token,crm_secret").maybeSingle());
-      return { ...o, agent_token: s && s.agent_token, crm_secret: s && s.crm_secret }; }
-    if ((m = p.match(/^\/api\/org\/rotate\/(agent|crm)$/))) { ok(await sb.rpc("tb_rotate_key", { p_what: m[1] })); return { ok: true }; }
+      const o = ok(await sb.from("tb_orgs").select("name,public_id,allowed_origins,event_retention_days,hb_retention_days").limit(1).maybeSingle());
+      const s = ok(await sb.from("tb_org_secrets").select("agent_token,crm_secret,api_key").maybeSingle());
+      return { ...o, agent_token: s && s.agent_token, crm_secret: s && s.crm_secret, api_key: s && s.api_key }; }
+    if (p === "/api/retention") { ok(await sb.rpc("tb_update_retention", { p_events: body.events, p_hb: body.hb })); return { ok: true }; }
+    if ((m = p.match(/^\/api\/org\/rotate\/(agent|crm|api)$/))) { ok(await sb.rpc("tb_rotate_key", { p_what: m[1] })); return { ok: true }; }
     if (p === "/api/me/password") { const r = await sb.auth.signInWithPassword({ email: ME.email, password: body.old }); if (r.error) fail("current password is wrong");
       if (!body.new || body.new.length < 10) fail("password must be at least 10 characters"); ok(await sb.auth.updateUser({ password: body.new })); return { ok: true }; }
     if (p === "/api/users") { if (method === "POST") await fn({ action: "create_user", name: body.name, email: body.email, role: body.role, password: body.password }); return listUsers(); }
@@ -67,9 +71,10 @@
           ok(await sb.rpc("tb_set_user", { p_user: id, p_role: body.role ?? cur.role, p_active: body.active !== undefined ? !!body.active : !!cur.active })); } }
       return listUsers(); }
     if (p === "/api/deploy/info") { const o = ok(await sb.from("tb_orgs").select("public_id,allowed_origins").limit(1).maybeSingle());
-      const s = ok(await sb.from("tb_org_secrets").select("crm_secret").maybeSingle());
-      return { server: siteUrl(), public_id: o.public_id, crm_secret: s && s.crm_secret, origins: o.allowed_origins, packaged: await packaged() }; }
+      const s = ok(await sb.from("tb_org_secrets").select("crm_secret,api_key").maybeSingle());
+      return { server: siteUrl(), events_url: `${cfg.supabaseUrl}/functions/v1/tb-events`, public_id: o.public_id, crm_secret: s && s.crm_secret, api_key: s && s.api_key, origins: o.allowed_origins, packaged: await packaged() }; }
     if (p === "/api/owner/summary") return ownerSummary();
+    if (p === "/api/owner/settings") { ok(await sb.rpc("tb_owner_set_setting", { p_key: "require_approval", p_value: !!body.require_approval })); return ownerSummary(); }
     if ((m = p.match(/^\/api\/owner\/requests\/(\d+)\/(approve|reject)$/))) { ok(await sb.rpc(m[2] === "approve" ? "tb_approve_request" : "tb_reject_request", { p_id: Number(m[1]) })); return ownerSummary(); }
     if (p === "/api/owner/orgs" && method === "POST") { await fn({ action: "create_workspace", org: body.org, name: body.name, email: body.email, password: body.password }); return ownerSummary(); }
     if ((m = p.match(/^\/api\/owner\/orgs\/([0-9a-f-]{36})$/))) {
@@ -90,12 +95,20 @@
     (await import("./installers.js")).saveFile(`trackobee-${date}.csv`, csv);
   }
 
+  async function exportEvents(days) {
+    const rows = await api("/api/events?days=" + (days || 0)); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    const csv = ["time,event,website_user,os_user,computer,facility,public_ip,source,detail", ...rows.map(e => [new Date(e.ts * 1000).toISOString(), e.type, e.crm_user, e.os_user, e.host, e.facility, e.pub_ip, e.source, e.detail].map(q).join(","))].join("\n");
+    (await import("./installers.js")).saveFile(`trackobee-events-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+  }
+
   const TB = {
-    init, api, downloadInstaller, exportCsv, status, siteUrl,
+    init, api, downloadInstaller, exportCsv, exportEvents, status, siteUrl,
+    publicSettings: async () => { const r = await sb.rpc("tb_public_settings"); return r.error ? { require_approval: false } : r.data; },
+    claim: async () => ok(await sb.rpc("tb_claim_workspace")),
     sb: () => sb, cfg: () => cfg,
     signIn: async (email, password) => ok(await sb.auth.signInWithPassword({ email, password })),
     signOut: async () => { await sb.auth.signOut(); },
-    signUp: async (email, password) => { const d = ok(await sb.auth.signUp({ email, password })); return d; },
+    signUp: async (email, password, meta) => ok(await sb.auth.signUp({ email, password, options: { data: meta || {} } })),
     requestWorkspace: async (org, name) => ok(await sb.rpc("tb_request_workspace", { p_org: org, p_name: name })),
   };
   window.TB = TB;

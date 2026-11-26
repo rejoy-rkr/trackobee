@@ -1,0 +1,42 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trackobee - Create a workspace</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2127;--card:#fff;--line:#d9dde2;--mut:#6b7280;--ac:#f5b301}
+@media(prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e8eb;--card:#1d2125;--line:#2e343a;--mut:#9aa3ad}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;padding:16px}
+.box{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px}
+h1{margin:0 0 4px;font-size:24px}h1 span{color:var(--ac)}p{color:var(--mut);margin:0 0 18px}
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 4px}
+input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--ac);color:#111;font:inherit;font-weight:600;cursor:pointer}button:disabled{opacity:.6}
+.sw{margin-top:14px;text-align:center;font-size:13px;color:var(--mut)}.sw a{color:var(--fg)}
+#err{color:#c62828;font-size:13px;margin-top:10px;min-height:16px}.note{font-size:12px;color:var(--mut);margin-top:12px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/api.js"></script>
+</head><body><form class="box" id="f">
+<h1>Track<span>obee</span></h1><p>Create a workspace for your organization. You become its admin and can invite your team.</p>
+<label>Organization name</label><input id="org" autocomplete="organization" required maxlength="80">
+<label>Your name</label><input id="name" autocomplete="name" required maxlength="80">
+<label>Work email</label><input id="email" type="email" autocomplete="username" required>
+<label>Password (min 10 characters)</label><input id="pw" type="password" autocomplete="new-password" required minlength="10">
+<button id="go">Create workspace</button><div id="err" role="alert"></div>
+<div class="note" id="apprnote" style="display:none">New workspaces are reviewed by the platform owner before they become active.</div>
+<div class="sw">Already have a workspace? <a href="login.html">Sign in</a></div></form>
+<script>
+const $=id=>document.getElementById(id);const msg=t=>$("err").textContent=t||"";
+const done=html=>{$("f").innerHTML='<h1>Track<span>obee</span></h1>'+html};
+TB.init().then(()=>TB.publicSettings()).then(s=>{if(s.require_approval)$("apprnote").style.display="block"}).catch(e=>msg(e.message));
+$("f").onsubmit=async e=>{e.preventDefault();msg("");$("go").disabled=true;
+ try{await TB.init();const email=$("email").value.trim(),pw=$("pw").value,org=$("org").value.trim(),name=$("name").value.trim();
+  if(pw.length<10)throw new Error("Password must be at least 10 characters");
+  const d=await TB.signUp(email,pw,{org_name:org,full_name:name});
+  if(!d.session){ // email confirmation is on: the workspace is created the first time they sign in after confirming
+   done('<p>Almost there. We sent a confirmation link to <b>'+email.replace(/[<>&"]/g,"")+'</b>. Open it, then sign in: your workspace is created automatically.</p><div class="sw"><a href="login.html">Go to sign in</a></div>');return}
+  const s=await TB.claim();
+  if(s.status=="ok"){location.href="app.html";return}
+  if(s.status=="pending"){await TB.signOut();done("<p>Request received. You will be able to sign in as soon as the platform owner approves your workspace.</p>\n<div class=\"sw\"><a href=\"login.html\">Go to sign in</a></div>");return}
+  throw new Error("Could not create the workspace")
+ }catch(err){msg(/already registered|already been registered/i.test(err.message)?"This email already has an account. Sign in instead.":err.message)}
+ finally{$("go").disabled=false}};
+</script></body></html>

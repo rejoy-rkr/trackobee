@@ -3,3 +3,6 @@ project_id = "trackobee"
 
 [functions.tb-manage-users]
 verify_jwt = true
+
+[functions.tb-events]
+verify_jwt = false      # callers authenticate with their organization's API key instead of a Supabase JWT

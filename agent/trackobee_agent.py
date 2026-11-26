@@ -1,10 +1,10 @@
 """Trackobee agent - Windows / Linux / macOS, Python 3 standard library only.
 Collects ONLY: hostname, LAN IP, OS username, lock/idle state, session events, and the
 CRM user identity handed over by the Trackobee page (signed token). No screenshots/keystrokes/content."""
-import ctypes, getpass, json, os, platform, shutil, socket, subprocess, sys, threading, time, urllib.request
+import ctypes, getpass, json, os, platform, shutil, signal, socket, subprocess, sys, threading, time, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "3.0"
+VERSION = "3.1"
 
 def _config():
     """Per-organization settings (server, agent_token, allowed_origins). Search order: baked-in config.json,
@@ -24,7 +24,7 @@ AGENT_TOKEN = _B.get("agent_token") or os.environ.get("TB_AGENT_TOKEN", "")
 INGEST = _B.get("ingest") or ""          # Supabase RPC URL (tb_ingest_heartbeat); empty => legacy self-hosted server
 APIKEY = _B.get("apikey") or ""          # Supabase anon (public) key
 ALLOWED = [o.strip() for o in (_B.get("allowed_origins") or os.environ.get("TB_ALLOWED_ORIGINS", "")).split(",") if o.strip()]
-PORT, INTERVAL, OSN = 47821, 15, platform.system()
+PORT, INTERVAL, OSN = int(os.environ.get("TB_AGENT_PORT", "47821")), int(os.environ.get("TB_AGENT_INTERVAL", "15")), platform.system()
 CFG = os.path.join(os.path.expanduser("~"), ".trackobee", "config.json")
 S = {"token": None, "user": None, "events": []}
 L = threading.Lock()
@@ -103,27 +103,43 @@ def state_idle():
 def event(t, user=None):
     with L: S["events"].append({"type": t, "ts": int(time.time()), **({"user": user} if user else {})})
 
+def send_beat(host, osu, st, idle, evs, tok):
+    """One heartbeat to the backend. True when it was accepted (so queued events can be dropped)."""
+    try:
+        if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
+            body = json.dumps(dict(p_agent_token=AGENT_TOKEN, p_host=host, p_ip=local_ip(), p_os_user=osu, p_state=st,
+                                   p_idle=int(idle), p_token=tok, p_events=evs)).encode()
+            rq = urllib.request.Request(INGEST, body, {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
+            return json.loads(urllib.request.urlopen(rq, timeout=10).read() or b"{}").get("ok") is True
+        body = json.dumps(dict(host=host, ip=local_ip(), os_user=osu, state=st, idle=idle, token=tok, events=evs)).encode()   # legacy Flask server
+        rq = urllib.request.Request(SERVER + "/api/agent/heartbeat", body, {"Content-Type": "application/json", "X-Token": AGENT_TOKEN})
+        urllib.request.urlopen(rq, timeout=10).read(); return True
+    except Exception:
+        return False
+
+HOST, OSU = socket.gethostname(), getpass.getuser()
+
+def goodbye(*_):
+    """Graceful stop (user logs off, service stops, Ctrl+C): tell the server, so history shows a clean logoff."""
+    try:
+        st, idle = state_idle()
+        with L: evs, tok = list(S["events"]) + [{"type": "logoff", "ts": int(time.time())}], S["token"]
+        send_beat(HOST, OSU, st, idle, evs, tok)
+    finally:
+        os._exit(0)
+
 def beat_loop():
-    host, osu, last = socket.gethostname(), getpass.getuser(), None
+    host, osu, last = HOST, OSU, None
     event("login")
     while True:
         st, idle = state_idle()
         if last and st != last: event("lock" if st == "locked" else "unlock")
         last = st
         with L: evs, tok = list(S["events"]), S["token"]
-        try:
-            if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
-                body = json.dumps(dict(p_agent_token=AGENT_TOKEN, p_host=host, p_ip=local_ip(), p_os_user=osu, p_state=st,
-                                       p_idle=int(idle), p_token=tok, p_events=evs)).encode()
-                rq = urllib.request.Request(INGEST, body, {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
-                sent = json.loads(urllib.request.urlopen(rq, timeout=10).read() or b"{}").get("ok") is True
-            else:          # legacy Flask server
-                body = json.dumps(dict(host=host, ip=local_ip(), os_user=osu, state=st, idle=idle, token=tok, events=evs)).encode()
-                rq = urllib.request.Request(SERVER + "/api/agent/heartbeat", body, {"Content-Type": "application/json", "X-Token": AGENT_TOKEN})
-                urllib.request.urlopen(rq, timeout=10).read(); sent = True
-            if sent:
-                with L: del S["events"][:len(evs)]
-        except Exception: pass
+        if send_beat(host, osu, st, idle, evs, tok):
+            with L: del S["events"][:len(evs)]
+        else:
+            with L: del S["events"][:-200]       # keep memory bounded while the server is unreachable
         time.sleep(INTERVAL)
 
 class H(BaseHTTPRequestHandler):
@@ -196,6 +212,9 @@ def run():
     except OSError: return          # already running for this user
     load(); S["user"] = token_user(S["token"]) if S["token"] else None
     threading.Thread(target=beat_loop, daemon=True).start()
+    for sig in ("SIGTERM", "SIGINT", "SIGHUP", "SIGBREAK"):      # handlers must be installed from the main thread
+        try: signal.signal(getattr(signal, sig), goodbye)
+        except Exception: pass
     srv.serve_forever()
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-/* Trackobee embed. Add to CRM pages for logged-in users only:
+/* Trackobee embed. Add to your website's pages for signed-in users only:
    <script src="https://YOUR-SITE/embed.js" data-token="SIGNED_TOKEN" async></script>
    It detects the OS, offers the agent installer if the agent is missing, and links the website user to the PC. */
 (function () {

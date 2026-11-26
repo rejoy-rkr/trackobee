@@ -18,6 +18,10 @@ button.pri{background:var(--ac);border-color:var(--ac);color:#111;font-weight:60
 
 <header><h1>Track<span>obee</span> <span class="m" style="color:var(--mut)">owner</span></h1><span class="sp"></span><span id="who" class="m"></span><button onclick="logout()">Sign out</button></header>
 <main>
+<h2>New workspaces</h2>
+<div class="card pad"><label style="display:flex;gap:10px;align-items:center;cursor:pointer"><input type="checkbox" id="appr" onchange="setApproval(this.checked)">
+ <span><b>Require my approval</b> before a new workspace becomes active</span></label>
+ <p class="m" style="margin:8px 0 0">Off (default): anyone can create a workspace on the sign-up page and it is active immediately. On: new sign-ups wait below until you approve them.</p></div>
 <h2>Pending workspace requests <span id="rc" class="m"></span></h2>
 <div class="card"><table><thead><tr><th>Organization</th><th>Requester</th><th>Email</th><th>Requested</th><th></th></tr></thead><tbody id="rq"></tbody></table></div>
 <h2>Workspaces</h2>
@@ -30,13 +34,14 @@ button.pri{background:var(--ac);border-color:var(--ac);color:#111;font-weight:60
 const $=id=>document.getElementById(id),esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dt=s=>new Date(s*1000).toLocaleString();
 const api=(...a)=>TB.api(...a);
-function draw(d){$("rc").textContent=d.requests.length?"("+d.requests.length+")":"";
+function draw(d){$("appr").checked=!!(d.settings&&d.settings.require_approval);$("rc").textContent=d.requests.length?"("+d.requests.length+")":"";
  $("rq").innerHTML=d.requests.map(r=>`<tr><td>${esc(r.org)}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td><td>${dt(r.created)}</td>
  <td><button class="pri" onclick="act(${+r.id},'approve')">Approve</button> <button onclick="act(${+r.id},'reject')">Reject</button></td></tr>`).join("")||'<tr><td class="m">No pending requests.</td></tr>';
  $("og").innerHTML=d.orgs.map(o=>`<tr><td>${esc(o.name)}</td><td>${esc(o.admin)}</td><td>${o.users}</td><td>${o.machines_24h}</td>
  <td><span class="b ${o.active?"on":"off"}">${o.active?"Active":"Suspended"}</span></td><td>${dt(o.created)}</td>
  <td><button onclick="toggle('${esc(o.id)}',${o.active?0:1})">${o.active?"Suspend":"Activate"}</button> <button onclick="del('${esc(o.id)}','${esc(o.name).replace(/'/g,"")}')">Delete</button></td></tr>`).join("")||'<tr><td class="m">No workspaces yet.</td></tr>'}
 async function load(){draw(await api("/api/owner/summary"))}
+async function setApproval(v){try{draw(await api("/api/owner/settings","POST",{require_approval:v}))}catch(e){alert(e.message);load()}}
 async function act(id,a){try{draw(await api(`/api/owner/requests/${id}/${a}`,"POST",{}))}catch(e){alert(e.message)}}
 async function toggle(id,v){draw(await api("/api/owner/orgs/"+id,"PATCH",{active:v}))}
 async function del(id,n){if(prompt(`This permanently deletes "${n}" and ALL its data. Type DELETE to confirm:`)==="DELETE")draw(await api("/api/owner/orgs/"+id,"DELETE"))}
