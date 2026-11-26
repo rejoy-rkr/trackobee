@@ -13,3 +13,5 @@ packaging/pkgout/
 data/
 .env
 .venv/
+supabase/.temp/
+supabase/.branches/

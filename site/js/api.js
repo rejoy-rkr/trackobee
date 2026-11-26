@@ -13,7 +13,12 @@
     sb = window.supabase.createClient(cfg.supabaseUrl, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true } });
     return TB;
   }
-  async function status() { return ok(await sb.rpc("tb_my_status")); }
+  async function status() {                         // no session (or an expired one) => "anon", never an error page
+    const s = await sb.auth.getSession(); if (!s.data || !s.data.session) return { status: "anon" };
+    const r = await sb.rpc("tb_my_status");
+    if (r.error) { if (/jwt|permission denied|not authenticated/i.test(r.error.message || "")) return { status: "anon" }; fail(r.error); }
+    return r.data;
+  }
   async function fn(body) {                       // privileged actions run in the tb-manage-users edge function
     const r = await sb.functions.invoke("tb-manage-users", { body });
     if (r.error) { let msg = r.error.message; try { msg = (await r.error.context.json()).error || msg; } catch (e) {} fail(msg); }
