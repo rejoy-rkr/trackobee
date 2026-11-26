@@ -4,7 +4,7 @@ CRM user identity handed over by the Trackobee page (signed token). No screensho
 import ctypes, getpass, json, os, platform, shutil, socket, subprocess, sys, threading, time, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "2.1"
+VERSION = "3.0"
 
 def _config():
     """Per-organization settings (server, agent_token, allowed_origins). Search order: baked-in config.json,
@@ -21,6 +21,8 @@ def _config():
 _B = _config()
 SERVER = (_B.get("server") or os.environ.get("TB_SERVER", "http://localhost:8090")).rstrip("/")
 AGENT_TOKEN = _B.get("agent_token") or os.environ.get("TB_AGENT_TOKEN", "")
+INGEST = _B.get("ingest") or ""          # Supabase RPC URL (tb_ingest_heartbeat); empty => legacy self-hosted server
+APIKEY = _B.get("apikey") or ""          # Supabase anon (public) key
 ALLOWED = [o.strip() for o in (_B.get("allowed_origins") or os.environ.get("TB_ALLOWED_ORIGINS", "")).split(",") if o.strip()]
 PORT, INTERVAL, OSN = 47821, 15, platform.system()
 CFG = os.path.join(os.path.expanduser("~"), ".trackobee", "config.json")
@@ -109,12 +111,18 @@ def beat_loop():
         if last and st != last: event("lock" if st == "locked" else "unlock")
         last = st
         with L: evs, tok = list(S["events"]), S["token"]
-        body = json.dumps(dict(host=host, ip=local_ip(), os_user=osu, state=st, idle=idle, token=tok, events=evs)).encode()
         try:
-            rq = urllib.request.Request(SERVER + "/api/agent/heartbeat", body,
-                                        {"Content-Type": "application/json", "X-Token": AGENT_TOKEN})
-            urllib.request.urlopen(rq, timeout=10).read()
-            with L: del S["events"][:len(evs)]
+            if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
+                body = json.dumps(dict(p_agent_token=AGENT_TOKEN, p_host=host, p_ip=local_ip(), p_os_user=osu, p_state=st,
+                                       p_idle=int(idle), p_token=tok, p_events=evs)).encode()
+                rq = urllib.request.Request(INGEST, body, {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
+                sent = json.loads(urllib.request.urlopen(rq, timeout=10).read() or b"{}").get("ok") is True
+            else:          # legacy Flask server
+                body = json.dumps(dict(host=host, ip=local_ip(), os_user=osu, state=st, idle=idle, token=tok, events=evs)).encode()
+                rq = urllib.request.Request(SERVER + "/api/agent/heartbeat", body, {"Content-Type": "application/json", "X-Token": AGENT_TOKEN})
+                urllib.request.urlopen(rq, timeout=10).read(); sent = True
+            if sent:
+                with L: del S["events"][:len(evs)]
         except Exception: pass
         time.sleep(INTERVAL)
 

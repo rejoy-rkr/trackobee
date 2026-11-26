@@ -1,0 +1,108 @@
+name: Deploy Trackobee
+# Pushes to main: apply database migrations + edge function to Supabase, build the agents, publish the website to GitHub Pages.
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "agent/**", "supabase/**", "packaging/**", ".github/workflows/deploy.yml"]
+  workflow_dispatch: {}
+permissions: { contents: read, pages: write, id-token: write }
+concurrency: { group: deploy, cancel-in-progress: false }
+
+jobs:
+  supabase:
+    if: ${{ vars.SUPABASE_PROJECT_REF != '' }}
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with: { version: latest }
+      - run: supabase link --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+      - run: supabase db push --yes
+      - run: supabase functions deploy tb-manage-users --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+
+  windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: packaging\build_windows.bat
+        shell: cmd
+      - uses: actions/upload-artifact@v4
+        with: { name: bin-windows, path: packaging/dist/trackobee-setup.exe }
+
+  linux:
+    runs-on: ubuntu-22.04          # older glibc => runs on more distros
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          pip install pyinstaller
+          python -m PyInstaller --onefile --clean --name trackobee-agent-linux agent/trackobee_agent.py
+      - uses: actions/upload-artifact@v4
+        with: { name: bin-linux, path: dist/trackobee-agent-linux }
+
+  mac:
+    strategy: { matrix: { include: [ { os: macos-14, arch: arm64 }, { os: macos-13, arch: x86_64 } ] } }
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          pip install pyinstaller
+          python -m PyInstaller --onefile --clean --name trackobee-agent-${{ matrix.arch }} agent/trackobee_agent.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-mac-${{ matrix.arch }}
+          path: dist/trackobee-agent-${{ matrix.arch }}
+
+  mac-universal:
+    needs: mac
+    if: ${{ !cancelled() && needs.mac.result == 'success' }}
+    runs-on: macos-14
+    continue-on-error: true
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: bin-mac-*, path: bins }
+      - run: lipo -create bins/bin-mac-arm64/trackobee-agent-arm64 bins/bin-mac-x86_64/trackobee-agent-x86_64 -output trackobee-agent-macos
+      - uses: actions/upload-artifact@v4
+        with: { name: bin-macos, path: trackobee-agent-macos }
+
+  pages:
+    needs: [windows, linux, mac-universal]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: { pattern: "bin-{windows,linux,macos}", path: installers, merge-multiple: true }
+      - name: Assemble site
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          mkdir -p _site/agent _site/installers
+          cp -r site/. _site/
+          cp agent/trackobee_agent.py _site/agent/
+          [ -d installers ] && cp -r installers/. _site/installers/ || true
+          python3 - <<'PY'
+          import json, os
+          json.dump({"supabaseUrl": os.environ["SUPABASE_URL"], "anonKey": os.environ["SUPABASE_ANON_KEY"], "siteUrl": os.environ.get("SITE_URL", "")}, open("_site/config.json", "w"), indent=2)
+          PY
+          touch _site/.nojekyll
+          ls -R _site | head -40
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+      - id: deploy
+        uses: actions/deploy-pages@v4

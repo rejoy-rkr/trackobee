@@ -1,67 +1,52 @@
 # Trackobee
-Multi-tenant work-time and availability tracker: embeddable website client + endpoint agents + live dashboard.
-Hosted on your own laptop (Cloudflare Tunnel for public HTTPS) with the database in Supabase (Postgres).
+Multi-tenant work-time and availability tracker: an embeddable website client, endpoint agents and a live dashboard.
+**Backend = Supabase** (Postgres + row-level security + one Edge Function). **Website = static files on GitHub Pages.** No server to run.
 
-## Architecture
-`PCs (agent) / CRM website (embed.js)` → `https://your-hostname (Cloudflare)` → `laptop: waitress on 127.0.0.1:8090` → `Supabase Postgres`
+```
+PC agent ──► Supabase RPC tb_ingest_heartbeat ──► Postgres (RLS per organization) ◄── dashboard (GitHub Pages, supabase-js)
+CRM page (embed.js) ─► local agent (127.0.0.1:47821)        owner/admin actions that need secrets ─► Edge Function tb-manage-users
+```
 
-## Setup on the laptop
-    git clone <repo> && cd trackobee
-    sh deploy/setup.sh                       # venv + deps + .env
-    nano .env                                # DATABASE_URL (Supabase), TB_PUBLIC_URL
-    .venv/bin/python manage.py check         # connects to Supabase, creates tables (RLS enabled)
-    .venv/bin/python manage.py create-owner you@yourco.com
-    sh deploy/install-services.sh            # auto-start Trackobee (+ tunnel)
-
-### Supabase
-1. Create a project. **Project Settings → Database → Connection string → Transaction pooler** (works over IPv4). Put it in `.env` as `DATABASE_URL`.
-2. Tables are created on first start with Row Level Security **enabled and no policies**, so Supabase's public REST API can't read them; only this server can.
-3. Heartbeats are pruned after `TB_RETENTION_DAYS` (default 60) to stay within Supabase's storage limits.
-
-### Cloudflare Tunnel (public HTTPS to the laptop; needed because the CRM is HTTPS)
-You need a domain on Cloudflare (free plan is fine). Install `cloudflared` from
-https://github.com/cloudflare/cloudflared/releases (or `apt`), then:
-
-    cloudflared tunnel login
-    cloudflared tunnel create trackobee            # prints TUNNEL-UUID, writes ~/.cloudflared/TUNNEL-UUID.json
-    cloudflared tunnel route dns trackobee trackobee.yourco.com
-    cp deploy/cloudflared-config.yml.example ~/.cloudflared/config.yml   # edit hostname, user, UUID
-    sh deploy/install-services.sh
-
-Set `TB_PUBLIC_URL=https://trackobee.yourco.com` in `.env` and restart: `systemctl --user restart trackobee`.
-Quick test without a domain: `cloudflared tunnel --url http://127.0.0.1:8090` (random URL that changes on restart: not for real deployments).
-
-### Keep the laptop awake
-The server is down while the laptop sleeps (agents retry; the gap shows as offline). Disable sleep/lid-suspend:
-`sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target` and set
-`HandleLidSwitch=ignore` + `HandleLidSwitchExternalPower=ignore` in `/etc/systemd/logind.conf`, then `sudo systemctl restart systemd-logind`.
-
-## Workspaces are approved manually
-- Visitors use **Request a workspace** on the sign-in page. Nothing is created and nobody can sign in until you approve.
-- Sign in as the owner (`create-owner`) → **owner console** (`/owner`): approve/reject requests, create workspaces manually,
-  suspend/activate (suspended = users logged out, agents rejected), delete (removes all data). `TB_ALLOW_SIGNUP=0` hides the request form.
-- Approving makes the requester the **Admin** of a new workspace with its own agent token + CRM secret.
-
-## Roles inside a workspace
-| Role | Can do |
+## Layout
+| Path | What |
 |---|---|
-| Admin | everything: users, keys, settings, facilities, deploy, view |
-| Sub-admin | facilities, deploy (embed + installers), allowed origins, view |
-| Read-only | view dashboards, reports, facilities |
+| `supabase/migrations/` | schema, RLS policies, RPC functions (all objects prefixed `tb_`) |
+| `supabase/functions/tb-manage-users/` | Edge Function: create/delete users, reset passwords, create workspaces |
+| `site/` | static website (login, dashboard, owner console, `embed.js`, installer generator) |
+| `agent/`, `packaging/` | the endpoint agent and its PyInstaller build scripts |
+| `.github/workflows/deploy.yml` | applies migrations + deploys the function, builds agents, publishes Pages |
+| `app.py`, `serve.py`, `manage.py`, `static/`, `deploy/` | the earlier self-hosted Flask backend (still works; not used by the Supabase setup) |
 
-## After a workspace admin signs in
-1. **Facilities**: map public IP / CIDR to sites. 2. **Settings**: add website origins (e.g. `https://customercentral.co`).
-3. **Deploy**: website embed (`<script>` + token-signing code for Python/PHP/Node) and per-organization endpoint installers (Windows/macOS/Linux).
-4. **Users** (admin): add sub-admins and read-only users.
+## How access works
+- **Workspaces are approved manually.** A visitor requests a workspace (creates a Supabase Auth user with no access). The platform **owner** approves in `owner.html`; only then is an organization created and that user becomes its **Admin**.
+- Roles: **Admin** (everything), **Sub-admin** (facilities, deploy, origins, view), **Read-only** (view). Enforced by Postgres RLS, not by the page.
+- Agents authenticate with a per-organization **agent token**; website users are linked to PCs with a short-lived **HMAC-signed token** that your CRM backend creates (secret never leaves your server).
+- Secrets (`tb_org_secrets`) are readable only by the workspace admin. Heartbeat tables can only be written by the ingest function.
 
-## Packaged agents (optional, removes the Python requirement on PCs)
-Build generic binaries via `.github/workflows/build-agent.yml` (no secrets) or `packaging/build_windows.bat` / `packaging/build_macos.sh`;
-put `trackobee-setup.exe`, `trackobee-agent-macos`, `trackobee-agent-linux` in `./installers/`. Sign them to avoid SmartScreen/Gatekeeper warnings.
+## One-time setup
+1. **Supabase project** (existing or new). Dashboard settings:
+   - Authentication → Providers → Email: **turn OFF "Confirm email"**, set minimum password length **10**. (Workspace requests create the account immediately; the owner's approval is the gate.)
+   - Database → Extensions: enable **pg_cron** (auto-deletes heartbeats older than 60 days; optional).
+2. **Apply the schema + function** (either of):
+   - CI: add repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD` and repo variable `SUPABASE_PROJECT_REF`, then push (or run the workflow), or
+   - local: `supabase link --project-ref <ref> && supabase db push && supabase functions deploy tb-manage-users`.
+3. **Create the platform owner:** Authentication → Users → *Add user* (email + password), then in the SQL editor: `select tb_make_owner('you@example.com');`
+4. **Website:** repo variables `SUPABASE_URL`, `SUPABASE_ANON_KEY` (public values; Project Settings → API), optional `SITE_URL` (custom domain). Settings → Pages → Source: **GitHub Actions**. Push → the workflow publishes the site.
+   *GitHub Pages from a **private** repo needs a paid GitHub plan; on the free plan the repo must be public (it contains no secrets), or host `site/` on Cloudflare Pages / Netlify instead.*
 
-## Development
-`python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python app.py` (SQLite in `./data` when `DATABASE_URL` is empty).
+## Using it
+1. Owner signs in (`/login.html` → redirected to the owner console), approves workspace requests.
+2. Workspace admin: **Facilities** (map public IP/CIDR → site), **Settings** (add your website origin, e.g. `https://customercentral.co`), **Deploy**:
+   - *Website embed*: paste the `<script>` on pages for logged-in users + add the token-signing function (Python/PHP/Node, pre-filled with your org id and secret) to your backend.
+   - *Endpoint installer*: download the Windows/macOS/Linux installer (built in the browser from your org settings) and run it, or push it with GPO/Intune/Jamf.
+3. **Users** (admin): add sub-admins / read-only users with a temporary password.
+
+## Agents
+Python agent works everywhere with Python 3. Prebuilt binaries (no Python needed) are produced by the workflow and served from the site under `/installers/`; the generated installers use them automatically. Sign them to avoid SmartScreen/Gatekeeper warnings.
+
+## Tests
+`supabase/` SQL is covered by a 74-check suite (roles, RLS isolation, ingest, report math, owner flow) run against Postgres; the Edge Function by a 30-check Deno suite with a fake Supabase client.
 
 ## Security notes
-scrypt password hashes, HttpOnly sessions, CSRF header on state-changing calls, login/signup throttling, per-organization data scoping and keys,
-HMAC-signed CRM user links, agent port restricted to your origins, server bound to localhost (only the tunnel reaches it).
-Tell employees what is collected (no screenshots, keystrokes or content) and get consent where the law requires it.
+RLS on every table (no anonymous table access), `security definer` functions with explicit role checks and fixed search_path, execute privileges revoked from `public`, privileged actions re-verified server-side in the Edge Function, agent port restricted to your origins.
+Tell employees what is collected (host, IPs, OS user, lock/idle state, CRM user; no screenshots/keystrokes/content) and get consent where the law requires it.

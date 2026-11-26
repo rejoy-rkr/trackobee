@@ -1,0 +1,180 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trackobee</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2127;--card:#fff;--line:#e3e6ea;--mut:#6b7280;--ac:#f5b301}
+@media(prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e8eb;--card:#1d2125;--line:#2e343a;--mut:#9aa3ad}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card);flex-wrap:wrap}
+header h1{font-size:18px;margin:0}header h1 span{color:var(--ac)}header .sp{flex:1}
+nav{display:flex;gap:4px;padding:8px 16px;overflow-x:auto}
+nav button{border:0;background:none;color:var(--mut);padding:8px 12px;border-radius:8px;cursor:pointer;font:inherit}
+nav button.on{background:var(--card);color:var(--fg);border:1px solid var(--line)}
+main{padding:0 16px 32px;max-width:1200px;margin:0 auto}section{display:none}section.on{display:block}
+h2{font-size:15px;margin:20px 0 8px}p.m,.m{color:var(--mut)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:auto}.pad{padding:14px}
+table{border-collapse:collapse;width:100%}th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:12px}
+.b{padding:2px 8px;border-radius:10px;font-size:12px;color:#fff}
+.available{background:#2e7d32}.away{background:#b7791f}.locked{background:#546e7a}.offline{background:#9e9e9e}
+.role{background:var(--line);color:var(--fg)}
+.warn{color:#c62828;font-weight:600}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+input,button,select,textarea{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);font:inherit}
+button{cursor:pointer}button.pri{background:var(--ac);border-color:var(--ac);color:#111;font-weight:600}
+textarea{width:100%;font:12px ui-monospace,monospace;min-height:110px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.fc{padding:10px 12px}.fc b{display:block;margin-bottom:4px}.fc small{color:var(--mut)}.big{font-size:22px;font-weight:700;color:#2e7d32}
+a{color:inherit}.msg{font-size:13px;min-height:18px;margin:6px 0}.err{color:#c62828}.good{color:#2e7d32}
+code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+</style></head><body>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/api.js"></script>
+
+<header><h1>Track<span>obee</span></h1><b id="org"></b><span class="sp"></span><span id="who" class="m"></span><span id="role" class="b role"></span>
+<button onclick="logout()">Sign out</button></header>
+<nav id="nav"></nav>
+<main>
+<section id="s-dash">
+ <h2>Availability by facility</h2><div class="grid" id="fac"></div>
+ <h2>Live: who is on which system</h2>
+ <div class="bar"><input id="q" placeholder="Filter user / host / IP / facility"></div>
+ <div class="card"><table><thead><tr><th>CRM user</th><th>Facility</th><th>Computer</th><th>Public IP</th><th>LAN IP</th><th>OS user</th><th>Status</th><th>Idle</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
+ <h2>Daily report</h2>
+ <div class="bar"><input type="date" id="d"><button onclick="load()">Load</button><a id="csv" href="#" onclick="TB.exportCsv($('d').value).catch(e=>alert(e.message));return false">Export CSV</a></div>
+ <div class="card"><table><thead><tr><th>User</th><th>Facility</th><th>Computer</th><th>IPs</th><th>First in</th><th>Last seen</th><th>Screen on</th><th>Idle</th><th>Locked</th></tr></thead><tbody id="rep"></tbody></table></div>
+ <h2>Login / logout events</h2>
+ <div class="card"><table><thead><tr><th>Time</th><th>CRM user</th><th>Facility</th><th>Computer</th><th>IP</th><th>Event</th></tr></thead><tbody id="ev"></tbody></table></div>
+</section>
+
+<section id="s-fac">
+ <h2>Facilities: map an IP range to a site</h2>
+ <p class="m">Match uses the public IP first, then the LAN IP. The most specific range wins.</p>
+ <div class="bar" id="facform"><input id="fn" placeholder="Facility name"><input id="fc" placeholder="IP or CIDR, e.g. 203.0.113.0/28"><button class="pri" onclick="addFac()">Add facility</button></div>
+ <div class="msg err" id="facmsg"></div>
+ <div class="card"><table><tbody id="fl"></tbody></table></div>
+</section>
+
+<section id="s-dep">
+ <h2>1. Website embed (runs when a logged-in user opens your site)</h2>
+ <p class="m">Add this to every page for logged-in users. It detects the OS, offers the agent install if missing, and links the website user to the PC.</p>
+ <div class="card pad"><textarea id="snip" readonly></textarea>
+  <div class="bar"><b>Token signing code for your backend:</b>
+   <select id="lang" onchange="drawSnip()"><option value="py">Python</option><option value="php">PHP</option><option value="js">Node.js</option></select></div>
+  <textarea id="sign" readonly style="min-height:170px"></textarea>
+  <div class="msg m" id="secnote"></div></div>
+ <h2>2. Endpoint installer (deploy to PCs without the website)</h2>
+ <p class="m">A ready-to-run script for your organization. Run it on a PC, or push it with GPO / Intune / Jamf / any script runner.</p>
+ <div class="card pad"><div class="bar" id="instbtns"></div><div class="msg m" id="instnote"></div>
+  <p class="m">Allowed website origins (where the embed is used) are set under <b>Settings</b>. The installer includes them.</p></div>
+</section>
+
+<section id="s-usr">
+ <h2>Team</h2>
+ <p class="m"><b>Admin</b>: everything, including users and secrets. <b>Sub-admin</b>: facilities, embed and installers, settings, view. <b>Read-only</b>: view dashboards and reports.</p>
+ <div class="card pad"><div class="bar"><input id="un" placeholder="Name"><input id="ue" type="email" placeholder="Email"><input id="up" type="text" placeholder="Temporary password (10+)">
+  <select id="ur"><option value="sub_admin">Sub-admin</option><option value="read_only">Read-only</option><option value="admin">Admin</option></select>
+  <button class="pri" onclick="addUser()">Add user</button></div><div class="msg err" id="umsg"></div></div>
+ <div class="card" style="margin-top:10px"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody id="ul"></tbody></table></div>
+</section>
+
+<section id="s-set">
+ <h2>Organization</h2>
+ <div class="card pad"><div class="bar"><input id="on" placeholder="Organization name" style="min-width:260px"><button onclick="saveOrg()">Save name</button></div>
+  <p class="m" style="margin-bottom:4px">Website origins allowed to talk to the agent (one per line), e.g. <code>https://customercentral.co</code></p>
+  <textarea id="orig" style="min-height:70px"></textarea>
+  <div class="bar"><button class="pri" onclick="saveOrg()">Save</button><span class="msg" id="omsg"></span></div></div>
+ <div id="secrets">
+  <h2>Keys (admin only)</h2>
+  <div class="card pad row">
+   <div><b>Agent token</b><p class="m">Installed agents use it to report. Rotating it disconnects installed agents until reinstalled.</p><code id="at"></code><div class="bar" style="margin-top:8px"><button onclick="rot('agent')">Rotate</button></div></div>
+   <div><b>CRM signing secret</b><p class="m">Your backend signs user tokens with it. Keep it server-side only. Rotating requires updating your backend.</p><code id="cs"></code><div class="bar" style="margin-top:8px"><button onclick="rot('crm')">Rotate</button></div></div>
+  </div></div>
+ <h2>My password</h2>
+ <div class="card pad"><div class="bar"><input id="op" type="password" placeholder="Current password"><input id="np" type="password" placeholder="New password (10+)"><button onclick="chpw()">Change</button><span class="msg" id="pmsg"></span></div></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id),t=s=>new Date(s*1000).toLocaleTimeString(),m=s=>Math.floor(s/60)+"m";
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LBL={available:"Available",away:"Away",locked:"Locked",offline:"Offline"},RL={admin:"Admin",sub_admin:"Sub-admin",read_only:"Read-only"};
+let ME,LIVE=[],timer;
+const api=(...a)=>TB.api(...a);
+function show(id){document.querySelectorAll("main section").forEach(s=>s.classList.toggle("on",s.id=="s-"+id));
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.id==id));
+ if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac()}
+async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner"){location.href="owner.html";return}$("org").textContent=ME.org;$("who").textContent=ME.name;$("role").textContent=RL[ME.role];
+ const tabs=[["dash","Dashboard"],["fac","Facilities"]];
+ if(ME.role!="read_only")tabs.push(["dep","Deploy"],["set","Settings"]);
+ if(ME.role=="admin")tabs.splice(3,0,["usr","Users"]);
+ $("nav").innerHTML=tabs.map(([i,n])=>`<button data-id="${i}">${n}</button>`).join("");
+ $("nav").onclick=e=>{if(e.target.dataset.id)show(e.target.dataset.id)};
+ if(ME.role=="read_only")$("facform").style.display="none";
+ $("d").value=new Date().toLocaleDateString("en-CA");$("q").oninput=drawLive;
+ show("dash");live();load();timer=setInterval(()=>{if($("s-dash").classList.contains("on"))live()},5000)}
+async function logout(){await TB.signOut();location.href="login.html"}
+// ---- dashboard
+function drawLive(){const q=$("q").value.toLowerCase(),f={};
+ LIVE.forEach(r=>{(f[r.facility]??={available:0,away:0,locked:0,offline:0})[r.state]++});
+ $("fac").innerHTML=Object.entries(f).sort().map(([n,c])=>`<div class="card fc"><b>${esc(n)}</b><span class="big">${c.available}</span> available<br><small>${c.away} away · ${c.locked} locked · ${c.offline} offline</small></div>`).join("")||'<p class="m">No agents reporting yet. See the Deploy tab.</p>';
+ $("live").innerHTML=LIVE.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>`<tr><td>${esc(r.crm_user||"- not paired")}</td><td>${esc(r.facility)}</td><td>${esc(r.host)}</td><td>${esc(r.pub_ip)}</td><td>${esc(r.ip)}</td><td class="${r.mismatch?"warn":""}">${esc(r.os_user)}${r.mismatch?" ⚠":""}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${m(r.idle)}</td><td>${t(r.last_seen)}</td></tr>`).join("")}
+async function live(){try{LIVE=await api("/api/live");drawLive()}catch(e){}}
+async function load(){const d=$("d").value;
+ const r=await api("/api/report?date="+d);
+ $("rep").innerHTML=r.map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.facility||"Unmapped")}</td><td>${esc(a.host)}</td><td>${esc(a.ips.join(", "))}</td><td>${t(a.first)}</td><td>${t(a.last)}</td><td>${m(a.screen_on)}</td><td>${m(a.idle)}</td><td>${m(a.locked)}</td></tr>`).join("");
+ const e=await api("/api/events?date="+d);
+ $("ev").innerHTML=e.map(x=>`<tr><td>${t(x.ts)}</td><td>${esc(x.crm_user||x.os_user)}</td><td>${esc(x.facility||"")}</td><td>${esc(x.host)}</td><td>${esc(x.pub_ip)}</td><td>${esc(x.type)}</td></tr>`).join("");
+ }
+// ---- facilities
+const canManage=()=>ME.role!="read_only";
+function drawFac(l){$("fl").innerHTML=l.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.cidr)}</td><td>${canManage()?`<button onclick="delFac(${+x.id})">Remove</button>`:""}</td></tr>`).join("")||'<tr><td class="m">No facilities yet.</td></tr>'}
+async function loadFac(){drawFac(await api("/api/facilities"))}
+async function addFac(){$("facmsg").textContent="";try{drawFac(await api("/api/facilities","POST",{name:$("fn").value,cidr:$("fc").value}));$("fn").value=$("fc").value=""}catch(e){$("facmsg").textContent=e.message}}
+async function delFac(id){drawFac(await api("/api/facilities?id="+id,"DELETE"))}
+// ---- deploy
+let DEP;
+async function loadDeploy(){DEP=await api("/api/deploy/info");drawSnip();
+ const names={windows:"Windows",mac:"macOS",linux:"Linux"};
+ $("instbtns").innerHTML=Object.entries(names).map(([k,n])=>`<button class="pri" onclick="TB.downloadInstaller('${k}').catch(e=>alert(e.message))">Download for ${n}</button>`).join("");
+ const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe uploaded)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed.";
+ if(/^(localhost|127\.|\[::1\])/.test(location.hostname)){const w=document.createElement("div");w.className="msg err";
+  w.textContent="Warning: you opened the dashboard as "+location.host+". Installers made now point to that address, so they only work on THIS computer. For other PCs, open the dashboard using the server's real address (LAN IP or public domain) or set TB_PUBLIC_URL.";$("instnote").after(w)}}
+function drawSnip(){const s=DEP.server,sec=DEP.crm_secret||"YOUR_CRM_SIGNING_SECRET",id=DEP.public_id,l=$("lang").value;
+ $("snip").value=`<script src="${s}/embed.js" data-token="{{ TRACKOBEE_TOKEN_FOR_LOGGED_IN_USER }}" async><\/script>\n<!-- on logout, optionally call: Trackobee.unpair() -->`;
+ const code={py:`import base64, hmac, hashlib, time
+ORG_ID = "${id}"
+SECRET = "${sec}"   # keep server-side only
+def trackobee_token(username, ttl=86400):
+    p = base64.urlsafe_b64encode(f"{username}:{int(time.time())+ttl}".encode()).decode().rstrip("=")
+    sig = hmac.new(SECRET.encode(), f"{ORG_ID}.{p}".encode(), hashlib.sha256).hexdigest()
+    return f"{ORG_ID}.{p}.{sig}"`,
+ php:`function trackobee_token($user, $ttl = 86400) {
+  $org = "${id}"; $secret = "${sec}"; // server-side only
+  $p = rtrim(strtr(base64_encode($user . ":" . (time() + $ttl)), "+/", "-_"), "=");
+  return $org . "." . $p . "." . hash_hmac("sha256", $org . "." . $p, $secret);
+}`,
+ js:`const crypto = require("crypto");
+const ORG_ID = "${id}", SECRET = "${sec}"; // server-side only
+function trackobeeToken(user, ttl = 86400) {
+  const p = Buffer.from(user + ":" + (Math.floor(Date.now()/1000) + ttl)).toString("base64url");
+  return ORG_ID + "." + p + "." + crypto.createHmac("sha256", SECRET).update(ORG_ID + "." + p).digest("hex");
+}`}[l];$("sign").value=code;
+ $("secnote").textContent=DEP.crm_secret?"The signing secret is shown because you are an admin. Never put it in browser-side code.":"Ask an admin for the CRM signing secret and replace YOUR_CRM_SIGNING_SECRET."}
+// ---- users
+async function loadUsers(){drawUsers(await api("/api/users"))}
+function drawUsers(l){$("ul").innerHTML=l.map(u=>`<tr><td>${esc(u.name)}</td><td>${esc(u.email)}</td>
+ <td><select onchange="upd('${esc(u.id)}',{role:this.value})">${Object.entries(RL).map(([k,v])=>`<option value="${k}" ${k==u.role?"selected":""}>${v}</option>`).join("")}</select></td>
+ <td>${u.active?"Active":'<span class="m">Disabled</span>'}</td>
+ <td><button onclick="upd('${esc(u.id)}',{active:${u.active?0:1}})">${u.active?"Disable":"Enable"}</button> <button onclick="resetPw('${esc(u.id)}')">Reset password</button> ${u.id==ME.id?"":`<button onclick="delUser('${esc(u.id)}')">Delete</button>`}</td></tr>`).join("")}
+async function addUser(){$("umsg").textContent="";try{drawUsers(await api("/api/users","POST",{name:$("un").value,email:$("ue").value,password:$("up").value,role:$("ur").value}));$("un").value=$("ue").value=$("up").value=""}catch(e){$("umsg").textContent=e.message}}
+async function upd(id,b){try{drawUsers(await api("/api/users/"+id,"PATCH",b))}catch(e){alert(e.message);loadUsers()}}
+async function resetPw(id){const p=prompt("New temporary password (min 10 characters):");if(p)upd(id,{password:p})}
+async function delUser(id){if(confirm("Delete this user?"))try{drawUsers(await api("/api/users/"+id,"DELETE"))}catch(e){alert(e.message)}}
+// ---- settings
+async function loadOrg(){const o=await api("/api/org");$("on").value=o.name;$("orig").value=o.allowed_origins.split(",").join("\n");
+ $("secrets").style.display=o.agent_token?"block":"none";$("at").textContent=o.agent_token||"";$("cs").textContent=o.crm_secret||"";$("on").disabled=ME.role!="admin"}
+async function saveOrg(){const b=$("omsg");b.textContent="";b.className="msg";try{await api("/api/org","POST",{name:$("on").value,allowed_origins:$("orig").value});b.textContent="Saved";b.classList.add("good")}catch(e){b.textContent=e.message;b.classList.add("err")}}
+async function rot(w){if(!confirm("Rotate this key? "+(w=="agent"?"Installed agents stop reporting until reinstalled.":"Your backend must be updated with the new secret.")))return;await api("/api/org/rotate/"+w,"POST",{});loadOrg()}
+async function chpw(){const b=$("pmsg");b.className="msg";try{await api("/api/me/password","POST",{old:$("op").value,new:$("np").value});b.textContent="Changed";b.classList.add("good");$("op").value=$("np").value=""}catch(e){b.textContent=e.message;b.classList.add("err")}}
+init().catch(e=>{document.body.innerHTML='<p style="padding:20px">'+esc(e.message)+'</p>'});
+</script></body></html>

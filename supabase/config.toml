@@ -1,0 +1,5 @@
+# Trackobee Supabase config. NOTE: do not run `supabase config push` against an existing project; set auth options in the dashboard (see README).
+project_id = "trackobee"
+
+[functions.tb-manage-users]
+verify_jwt = true
