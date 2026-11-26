@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trackobee - Sign in</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2127;--card:#fff;--line:#d9dde2;--mut:#6b7280;--ac:#f5b301}
+@media(prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e8eb;--card:#1d2125;--line:#2e343a;--mut:#9aa3ad}}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;padding:16px;box-sizing:border-box}
+.box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px}
+h1{margin:0 0 4px;font-size:24px}h1 span{color:var(--ac)}p{color:var(--mut);margin:0 0 18px}
+label{display:block;font-size:12px;color:var(--mut);margin:12px 0 4px}
+input{width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
+button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--ac);color:#111;font:inherit;font-weight:600;cursor:pointer}
+.sw{margin-top:14px;text-align:center;font-size:13px;color:var(--mut)}.sw a{color:var(--fg);cursor:pointer;text-decoration:underline}
+#err{color:#c62828;font-size:13px;margin-top:10px;min-height:16px}.hide{display:none}
+</style></head><body><form class="box" id="f">
+<h1>Track<span>obee</span></h1><p id="sub">Sign in to your workspace</p>
+<div id="su" class="hide"><label>Organization name</label><input id="org" autocomplete="organization">
+<label>Your name</label><input id="name" autocomplete="name"></div>
+<label>Email</label><input id="email" type="email" autocomplete="username" required>
+<label>Password <span id="hint" class="hide">(min 10 characters)</span></label><input id="pw" type="password" autocomplete="current-password" required>
+<button id="go">Sign in</button><div id="err" role="alert"></div>
+<div class="sw" id="sw"></div></form>
+<script>
+const $=id=>document.getElementById(id);let mode="login",allow=true;
+function draw(){const s=mode=="signup";$("su").classList.toggle("hide",!s);$("hint").classList.toggle("hide",!s);
+ $("go").textContent=s?"Create workspace":"Sign in";$("sub").textContent=s?"Create your organization. You become its admin.":"Sign in to your workspace";
+ $("pw").autocomplete=s?"new-password":"current-password";
+ $("sw").innerHTML=allow?(s?'Have an account? <a id="t">Sign in</a>':'New here? <a id="t">Create a workspace</a>'):"";
+ if($("t"))$("t").onclick=()=>{mode=s?"login":"signup";$("err").textContent="";draw()}}
+fetch("/api/config").then(r=>r.json()).then(c=>{allow=c.signup;draw()}).catch(draw);
+$("f").onsubmit=async e=>{e.preventDefault();$("err").textContent="";
+ const body=mode=="signup"?{org:$("org").value,name:$("name").value,email:$("email").value,password:$("pw").value}:{email:$("email").value,password:$("pw").value};
+ const r=await fetch("/api/auth/"+mode,{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"tb"},body:JSON.stringify(body)});
+ const j=await r.json().catch(()=>({}));if(r.ok)location.href="/app";else $("err").textContent=j.error||"Something went wrong"};
+draw();
+</script></body></html>

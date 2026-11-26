@@ -1,48 +1,39 @@
 # Trackobee
-Embedded CRM plugin + endpoint agent + live dashboard.
+Multi-tenant work-time and availability tracker. Each organization signs up, becomes its own workspace, and gets
+an embeddable website client plus endpoint installers. Agents report host, IPs, OS user, lock/idle state and the
+website (CRM) user; the dashboard shows live availability by facility, daily screen-on time and login/logout events.
 
-## Run the server
-    TB_AGENT_TOKEN=<random> TB_CRM_SECRET=<random> TB_DASH_PASS=<pass> \
-    TB_PUBLIC_URL=https://trackobee.yourco.com TB_ALLOWED_ORIGINS=https://customercentral.co \
-    TB_TRUST_PROXY=1 python3 app.py        # behind HTTPS reverse proxy; PORT=8090 default
+## Run
+    pip install flask
+    TB_PUBLIC_URL=https://trackobee.yourco.com TB_TRUST_PROXY=1 TB_SECURE_COOKIES=1 python3 app.py   # PORT=8090
+Open the site → **Create a workspace** → you are the Admin. Data lives in `./data` (set `TB_DATA`). Put it behind HTTPS.
+`TB_ALLOW_SIGNUP=0` closes public signup after you have created your workspace(s).
 
-## Embed in customercentral.co (only on pages for logged-in users)
-The CRM backend signs a short-lived token for the logged-in user using the same TB_CRM_SECRET:
+## Roles
+| Role | Can do |
+|---|---|
+| Admin | everything: users, keys (agent token, CRM secret), settings, facilities, deploy, view |
+| Sub-admin | facilities, deploy (embed + installers), allowed origins, view |
+| Read-only | view dashboards, reports, facilities |
 
-    # Python
-    import base64,hmac,hashlib,time
-    def tb_token(user, ttl=86400):
-        p=base64.urlsafe_b64encode(f"{user}:{int(time.time())+ttl}".encode()).decode().rstrip("=")
-        return p+"."+hmac.new(SECRET,p.encode(),hashlib.sha256).hexdigest()
-    // PHP
-    function tb_token($u,$s,$ttl=86400){$p=rtrim(strtr(base64_encode("$u:".(time()+$ttl)),'+/','-_'),'=');
-      return $p.'.'.hash_hmac('sha256',$p,$s);}
+## After login
+1. **Facilities** → map public IP / CIDR ranges to sites.
+2. **Settings** → add your website origin(s), e.g. `https://customercentral.co`.
+3. **Deploy**
+   - *Website embed*: paste the `<script>` tag on pages for logged-in users; add the token-signing function (Python/PHP/Node, pre-filled with your org id and secret) to your backend.
+     The page detects the OS, offers the install if the agent is missing, and links the website user to the PC.
+   - *Endpoint installer*: download the per-organization script for Windows / macOS / Linux and run it (or push it by GPO / Intune / Jamf).
+4. **Users** (admin) → add sub-admins and read-only users.
 
-    <script src="https://trackobee.yourco.com/embed.js" data-token="{{ tb_token(user) }}" async></script>
-    <!-- on CRM logout: Trackobee.unpair() -->
+## Packaged agents (optional, removes the Python requirement)
+Binaries are generic (no secrets); organization settings come from `org.json` written by the setup script.
+Build on CI (`.github/workflows/build-agent.yml`, no secrets needed) or locally with `packaging/build_windows.bat` / `packaging/build_macos.sh`,
+then put in `./installers/`: `trackobee-setup.exe`, `trackobee-agent-macos`, `trackobee-agent-linux`. Generated installers use them automatically,
+otherwise they fall back to the Python agent. `trackobee.pkg` is for MDM; deliver `/Library/Trackobee/org.json` with it.
+Sign the exe / sign + notarize the pkg to avoid SmartScreen / Gatekeeper warnings.
 
-Flow: page loads → detects OS → no agent? shows "Install for Windows/macOS/Linux" banner
-(installer download needs the signed token) → agent runs on 127.0.0.1:47821 → page hands it the token
-→ agent heartbeats every 15s with the verified CRM user → dashboard shows user, machine, IP, facility, availability.
-
-## Facilities
-Dashboard → Facilities: map public IP / CIDR (and optionally LAN subnets) to a site name.
-
-## Notes
-- Installers need Python 3 on the PC (macOS/Linux have it; Windows: install python.org). For no-dependency
-  installs, package agent with PyInstaller into .exe/.pkg and sign it.
-- Chrome may ask the user to allow "local network access" for the CRM site once.
-- Collected: host, LAN/public IP, OS user, lock/idle state, CRM user. No screenshots, keystrokes, or content.
-  Inform employees and get consent per your local law.
-
-## Packaged installers (no Python needed on PCs)
-`.exe` must be built on Windows and `.pkg` on macOS (PyInstaller can't cross-compile).
-- **CI (recommended):** add repo secrets `TB_SERVER`, `TB_AGENT_TOKEN`, `TB_ALLOWED_ORIGINS` (optional `SIGN_APP`, `SIGN_PKG`),
-  run the "Build Trackobee agent" workflow, download the `windows` and `macos` artifacts.
-- **Manual:** `packaging\build_windows.bat` (Windows) / `sh packaging/build_macos.sh` (macOS) with the same env vars set.
-- Put `trackobee-setup.exe` and `trackobee.pkg` in `./installers/` (or `TB_INSTALLERS`). `/download/windows|mac` then serves
-  them automatically; Linux (and any OS without a built file) falls back to the script installer.
-- Windows: the exe self-installs per-user (no admin), runs at logon via the HKCU Run key. Remove: `trackobee-agent.exe --uninstall`.
-- macOS: pkg installs `/Library/Trackobee/trackobee-agent` + a LaunchAgent for every user. Remove: `sudo sh packaging/macos/uninstall.sh`.
-- Unsigned builds trigger SmartScreen (Windows) / Gatekeeper (macOS) warnings: sign the exe, and sign + notarize the pkg.
-- The server URL and agent token are baked into the binary (so the token is extractable): rotate `TB_AGENT_TOKEN` and rebuild if leaked.
+## Security notes
+Passwords are hashed (scrypt), sessions are HttpOnly cookies, state-changing calls require a custom header (CSRF), logins are throttled,
+all data is scoped per organization, agent tokens and CRM secrets are per organization and rotatable, the agent's local port only
+accepts your origins, and CRM user links are HMAC-signed so they can't be spoofed from the browser.
+Tell employees what is collected (no screenshots, keystrokes or content) and get consent where the law requires it.

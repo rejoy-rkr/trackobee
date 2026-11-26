@@ -4,17 +4,23 @@ CRM user identity handed over by the Trackobee page (signed token). No screensho
 import ctypes, getpass, json, os, platform, shutil, socket, subprocess, sys, threading, time, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.1"
+VERSION = "2.0"
 
-def _bundled():
-    """Packaged builds carry config.json (server URL, agent token, allowed origins) baked in at build time."""
-    try:
-        base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(base, "config.json")) as f: return json.load(f)
-    except Exception: return {}
-_B = _bundled()
+def _config():
+    """Per-organization settings (server, agent_token, allowed_origins). Search order: baked-in config.json,
+    ~/.trackobee/org.json (written by the setup script), then a system-wide file (for MDM / GPO deployments)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    paths = [os.path.join(base, "config.json"), os.path.join(os.path.expanduser("~"), ".trackobee", "org.json"),
+             "/Library/Trackobee/org.json", "/etc/trackobee/org.json",
+             os.path.join(os.environ.get("PROGRAMDATA", ""), "Trackobee", "org.json")]
+    for p in paths:
+        try:
+            with open(p) as f: return json.load(f)
+        except Exception: continue
+    return {}
+_B = _config()
 SERVER = (_B.get("server") or os.environ.get("TB_SERVER", "http://localhost:8090")).rstrip("/")
-AGENT_TOKEN = _B.get("agent_token") or os.environ.get("TB_AGENT_TOKEN", "change-me")
+AGENT_TOKEN = _B.get("agent_token") or os.environ.get("TB_AGENT_TOKEN", "")
 ALLOWED = [o.strip() for o in (_B.get("allowed_origins") or os.environ.get("TB_ALLOWED_ORIGINS", "")).split(",") if o.strip()]
 PORT, INTERVAL, OSN = 47821, 15, platform.system()
 CFG = os.path.join(os.path.expanduser("~"), ".trackobee", "config.json")
@@ -36,7 +42,7 @@ def save():
 def token_user(tok):  # display only; the server does the real signature check
     import base64
     try:
-        p = tok.split(".")[0]; return base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)).decode().rsplit(":", 1)[0]
+        p = tok.split(".")[1]; return base64.urlsafe_b64decode(p + "=" * (-len(p) % 4)).decode().rsplit(":", 1)[0]
     except Exception: return None
 
 def local_ip():

@@ -10,3 +10,4 @@ packaging/root/
 packaging/scripts/
 packaging/pkgout/
 *.spec
+data/

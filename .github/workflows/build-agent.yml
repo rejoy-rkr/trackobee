@@ -1,9 +1,5 @@
-name: Build Trackobee agent
-on: { workflow_dispatch: {} , push: { tags: ["agent-v*"] } }
-env:
-  TB_SERVER: ${{ secrets.TB_SERVER }}
-  TB_AGENT_TOKEN: ${{ secrets.TB_AGENT_TOKEN }}
-  TB_ALLOWED_ORIGINS: ${{ secrets.TB_ALLOWED_ORIGINS }}
+name: Build Trackobee agent (generic binaries, no secrets)
+on: { workflow_dispatch: {}, push: { tags: ["agent-v*"] } }
 jobs:
   windows:
     runs-on: windows-latest
@@ -13,9 +9,19 @@ jobs:
         with: { python-version: "3.12" }
       - run: packaging\build_windows.bat
         shell: cmd
-      # Optional: sign packaging\dist\trackobee-setup.exe with signtool + your code-signing cert
       - uses: actions/upload-artifact@v4
         with: { name: windows, path: packaging/dist/trackobee-setup.exe }
+  linux:
+    runs-on: ubuntu-22.04     # older glibc => runs on more distros
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          pip install pyinstaller
+          python -m PyInstaller --onefile --clean --name trackobee-agent-linux agent/trackobee_agent.py
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: dist/trackobee-agent-linux }
   mac-bin:
     strategy: { matrix: { include: [ { os: macos-14, arch: arm64 }, { os: macos-13, arch: x86_64 } ] } }
     runs-on: ${{ matrix.os }}
@@ -24,11 +30,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: |
-          cd packaging && python make_config.py && pip install pyinstaller
-          python -m PyInstaller --onefile --clean --name trackobee-agent-${{ matrix.arch }} --add-data "config.json:." ../agent/trackobee_agent.py
+          pip install pyinstaller
+          python -m PyInstaller --onefile --clean --name trackobee-agent-${{ matrix.arch }} agent/trackobee_agent.py
       - uses: actions/upload-artifact@v4
-        with: { name: bin-${{ matrix.arch }}, path: packaging/dist/trackobee-agent-${{ matrix.arch }} }
-  mac-pkg:
+        with: { name: bin-${{ matrix.arch }}, path: dist/trackobee-agent-${{ matrix.arch }} }
+  mac-universal:
     needs: mac-bin
     runs-on: macos-14
     steps:
@@ -39,7 +45,7 @@ jobs:
           lipo -create bins/bin-arm64/trackobee-agent-arm64 bins/bin-x86_64/trackobee-agent-x86_64 -output trackobee-agent
           UNIVERSAL_BIN="$PWD/trackobee-agent" sh packaging/build_macos.sh
         env:
-          SIGN_APP: ${{ secrets.SIGN_APP }}     # optional Developer ID Application identity
-          SIGN_PKG: ${{ secrets.SIGN_PKG }}     # optional Developer ID Installer identity
+          SIGN_APP: ${{ secrets.SIGN_APP }}   # optional
+          SIGN_PKG: ${{ secrets.SIGN_PKG }}   # optional
       - uses: actions/upload-artifact@v4
-        with: { name: macos, path: packaging/dist/trackobee.pkg }
+        with: { name: macos, path: "packaging/dist/trackobee-agent-macos\npackaging/dist/trackobee.pkg" }
