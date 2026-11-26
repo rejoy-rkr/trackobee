@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.db
+installers/*
+!installers/.gitkeep
+packaging/config.json
+packaging/dist/
+packaging/build/
+packaging/root/
+packaging/scripts/
+packaging/pkgout/
+*.spec

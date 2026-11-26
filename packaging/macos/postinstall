@@ -1,0 +1,10 @@
+#!/bin/sh
+# Runs as root after the pkg copies files. Starts the agent for the user who is logged in now;
+# every other user gets it automatically at their next login (LaunchAgent in /Library/LaunchAgents).
+CONSOLE_USER=$(/usr/bin/stat -f%Su /dev/console)
+if [ -n "$CONSOLE_USER" ] && [ "$CONSOLE_USER" != "root" ]; then
+  UID_=$(/usr/bin/id -u "$CONSOLE_USER")
+  /bin/launchctl bootout gui/$UID_ /Library/LaunchAgents/global.trackobee.agent.plist 2>/dev/null
+  /bin/launchctl bootstrap gui/$UID_ /Library/LaunchAgents/global.trackobee.agent.plist
+fi
+exit 0
