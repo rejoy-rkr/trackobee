@@ -1,0 +1,7 @@
+# ~/.cloudflared/config.yml   (see README: "Cloudflare Tunnel")
+tunnel: trackobee
+credentials-file: /home/YOURUSER/.cloudflared/TUNNEL-UUID.json
+ingress:
+  - hostname: trackobee.example.com
+    service: http://127.0.0.1:8090
+  - service: http_status:404

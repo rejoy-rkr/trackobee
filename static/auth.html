@@ -22,14 +22,14 @@ button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;backgr
 <script>
 const $=id=>document.getElementById(id);let mode="login",allow=true;
 function draw(){const s=mode=="signup";$("su").classList.toggle("hide",!s);$("hint").classList.toggle("hide",!s);
- $("go").textContent=s?"Create workspace":"Sign in";$("sub").textContent=s?"Create your organization. You become its admin.":"Sign in to your workspace";
+ $("go").textContent=s?"Request workspace":"Sign in";$("sub").textContent=s?"Request a workspace for your organization. It becomes active once the platform owner approves it.":"Sign in to your workspace";
  $("pw").autocomplete=s?"new-password":"current-password";
- $("sw").innerHTML=allow?(s?'Have an account? <a id="t">Sign in</a>':'New here? <a id="t">Create a workspace</a>'):"";
+ $("sw").innerHTML=allow?(s?'Have an account? <a id="t">Sign in</a>':'New here? <a id="t">Request a workspace</a>'):"";
  if($("t"))$("t").onclick=()=>{mode=s?"login":"signup";$("err").textContent="";draw()}}
 fetch("/api/config").then(r=>r.json()).then(c=>{allow=c.signup;draw()}).catch(draw);
 $("f").onsubmit=async e=>{e.preventDefault();$("err").textContent="";
  const body=mode=="signup"?{org:$("org").value,name:$("name").value,email:$("email").value,password:$("pw").value}:{email:$("email").value,password:$("pw").value};
  const r=await fetch("/api/auth/"+mode,{method:"POST",headers:{"Content-Type":"application/json","X-Requested-With":"tb"},body:JSON.stringify(body)});
- const j=await r.json().catch(()=>({}));if(r.ok)location.href="/app";else $("err").textContent=j.error||"Something went wrong"};
+ const j=await r.json().catch(()=>({}));if(r.ok&&j.pending){$("f").innerHTML='<h1>Track<span>obee</span></h1><p>Request received. You will be able to sign in as soon as the platform owner approves your workspace.</p>'}else if(r.ok)location.href=j.redirect||"/app";else $("err").textContent=j.error||"Something went wrong"};
 draw();
 </script></body></html>

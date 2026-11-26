@@ -1,0 +1,11 @@
+[Unit]
+Description=Cloudflare Tunnel for Trackobee
+After=network-online.target
+
+[Service]
+ExecStart=@CLOUDFLARED@ tunnel --no-autoupdate run trackobee
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

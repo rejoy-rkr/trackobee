@@ -11,3 +11,5 @@ packaging/scripts/
 packaging/pkgout/
 *.spec
 data/
+.env
+.venv/
