@@ -44,7 +44,7 @@
       ME = s; if (s.role !== "owner") { const pr = ok(await sb.from("tb_profiles").select("org_id").eq("user_id", s.id).maybeSingle()); ORG_ID = pr && pr.org_id; } return s; }
     if (p === "/api/live") {                                       // live status + each computer's inventory (serial number, model ...), inventory cached 60 s
       const rows = ok(await sb.rpc("tb_live_status"));
-      if (!DEVC || Date.now() - DEVT > 60000) { try { DEVC = ok(await sb.from("tb_devices").select("host,info,telemetry,location,agent_version,updated_at,facility_override")); DEVT = Date.now(); } catch (e) {} }
+      if (!DEVC || Date.now() - DEVT > 60000) { try { DEVC = ok(await sb.from("tb_devices").select("host,info,telemetry,location,agent_version,updated_at,facility_override,first_seen")); DEVT = Date.now(); } catch (e) {} }
       const m = {}; (DEVC || []).forEach(d => { m[d.host] = d; });
       return rows.map(r => { const d = m[r.host], i = (d && d.info) || {}; return { ...r, serial: i.serial_number || i.board_serial || "", dev: d || null }; }); }
     if (p === "/api/report") { const [a, b] = dayRange(q.get("date"));
@@ -64,6 +64,10 @@
       return ok(await sb.rpc("tb_work_summary", { p_start: a, p_end: b, p_tz: tz })).map(r => ({ day: r.day, user: r.usr, hosts: r.hosts || [], worked: r.worked, away: r.away, locked: r.locked, first: r.first_ts, last: r.last_ts })); }
     if (p === "/api/apps") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       return ok(await sb.rpc("tb_app_usage", { p_start: a, p_end: b })).map(r => ({ user: r.usr, app: r.app, seconds: r.seconds })); }
+    if (p === "/api/people") {                                   // display names + first-seen per employee
+      if (method === "POST") { ok(await sb.rpc("tb_set_person_name", { p_usr: body.user, p_name: body.name || "" })); }
+      const r = await sb.from("tb_people").select("usr,name,first_seen"); if (r.error) return {};      // older database: no renames yet
+      const m = {}; r.data.forEach(x => { m[x.usr] = { name: x.name, first: x.first_seen }; }); return m; }
     if (p === "/api/sites") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       const r = await sb.rpc("tb_site_usage", { p_start: a, p_end: b }); if (r.error) return [];      // older database: no website data yet
       return r.data.map(x => ({ user: x.usr, site: x.site, seconds: x.seconds })); }
