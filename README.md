@@ -1,4 +1,6 @@
 # Trackobee
+
+> **Full documentation** (installation, every API, data model, troubleshooting): [docs/INTEGRATION.md](docs/INTEGRATION.md), also published in the app at `/docs.html`.
 Know who is working where, **from any website**. Trackobee links the people who sign in to *your* website or app with the computers they sit at,
 and gives you live availability by facility, screen-on time, and a login/logoff history for every endpoint.
 Backend = **Supabase** (Postgres + row-level security + two small Edge Functions). Website = static files on **GitHub Pages**. No server to run.
@@ -22,10 +24,9 @@ website page (embed.js, optional) ► local agent ─┘            owner/admin 
    Trackobee pairs the user with the one active PC reporting from that IP. Many PCs behind one IP? Pass `host`, or add the optional **embed** (one `<script>` + a signed token) for exact pairing.
 
 ## Employee tracking (what the dashboard shows)
-- **Dashboard:** live status per employee (Available / Away / Locked / Offline, current application, battery, approximate location) and **Today**: worked and away time.
+- **Dashboard:** one table of employees with live status, serial number, current application, worked and away time today and battery. **Click an employee** for their device details, per-day hours, applications and sign-in/sign-out history for any date range.
 - **Reports:** any date range, worked hours per employee per day, totals and averages, time per application, CSV export.
   *Worked* = screen unlocked and keyboard/mouse used in the last **2 minutes**; *Away* = no activity for more than 2 minutes, or screen locked.
-- **History:** login/logoff, lock/unlock and online/offline events for any date range.
 - **Devices:** serial number, model, OS, CPU/RAM/disks, MACs, battery health, Wi-Fi, agent version, location. The agent sends this as free-form JSON
   (`tb_devices.info` / `telemetry` / `location`), so new fields need only an agent update, never a migration or a new installer.
 - **Agents update themselves** from `<site>/agent/trackobee_agent.py` (tested, then swapped in and restarted), so installers are one-time.

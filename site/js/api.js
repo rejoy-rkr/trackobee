@@ -1,6 +1,6 @@
 // Trackobee browser client for Supabase. Exposes window.TB and a route-style api() used by the pages.
 (function () {
-  let cfg, sb, ME = null, ORG_ID = null, USERS = [];
+  let cfg, sb, ME = null, ORG_ID = null, USERS = [], DEVC = null, DEVT = 0;
   const fail = (e) => { throw new Error(String((e && e.message) || e || "Request failed").replace(/^Error:\s*/, "")); };
   const ok = (r) => { if (r.error) fail(r.error); return r.data; };
   const dayRange = (d) => { const s = new Date(d + "T00:00:00"); return [Math.floor(s / 1000), Math.floor(s / 1000) + 86400]; };
@@ -42,7 +42,11 @@
     const [p, qs] = path.split("?"); const q = new URLSearchParams(qs || ""); let m;
     if (p === "/api/me") { const s = await status(); if (s.status !== "ok") { location.href = "login.html"; fail("not signed in"); }
       ME = s; if (s.role !== "owner") { const pr = ok(await sb.from("tb_profiles").select("org_id").eq("user_id", s.id).maybeSingle()); ORG_ID = pr && pr.org_id; } return s; }
-    if (p === "/api/live") return ok(await sb.rpc("tb_live_status"));
+    if (p === "/api/live") {                                       // live status + each computer's inventory (serial number, model ...), inventory cached 60 s
+      const rows = ok(await sb.rpc("tb_live_status"));
+      if (!DEVC || Date.now() - DEVT > 60000) { try { DEVC = ok(await sb.from("tb_devices").select("host,info,telemetry,location,agent_version,updated_at,facility_override")); DEVT = Date.now(); } catch (e) {} }
+      const m = {}; (DEVC || []).forEach(d => { m[d.host] = d; });
+      return rows.map(r => { const d = m[r.host], i = (d && d.info) || {}; return { ...r, serial: i.serial_number || i.board_serial || "", dev: d || null }; }); }
     if (p === "/api/report") { const [a, b] = dayRange(q.get("date"));
       return ok(await sb.rpc("tb_daily_report", { p_start: a, p_end: b })).map(r => ({ user: r.usr, host: r.host, facility: r.facility, ips: r.ips, first: r.first_ts, last: r.last_ts, screen_on: r.screen_on, idle: r.idle, locked: r.locked })); }
     if (p === "/api/events") {                                   // ?from=YYYY-MM-DD&to=YYYY-MM-DD (local days) or ?days=N
@@ -60,9 +64,14 @@
       return ok(await sb.rpc("tb_work_summary", { p_start: a, p_end: b, p_tz: tz })).map(r => ({ day: r.day, user: r.usr, hosts: r.hosts || [], worked: r.worked, away: r.away, locked: r.locked, first: r.first_ts, last: r.last_ts })); }
     if (p === "/api/apps") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       return ok(await sb.rpc("tb_app_usage", { p_start: a, p_end: b })).map(r => ({ user: r.usr, app: r.app, seconds: r.seconds })); }
-    if (p === "/api/devices") return ok(await sb.from("tb_devices").select("*").order("host"));
+    if (p === "/api/devices") {                                     // inventory + each computer's current facility
+      const [devs, live] = await Promise.all([sb.from("tb_devices").select("*").order("host"), sb.rpc("tb_live_status")]);
+      const m = {}; (live.data || []).forEach(r => { m[r.host] = r; });
+      return ok(devs).map(d => ({ ...d, fac: m[d.host] ? m[d.host].facility : undefined, fac_src: m[d.host] ? m[d.host].facility_source : undefined })); }
+    if (p === "/api/device/facility" && method === "POST") { ok(await sb.rpc("tb_set_device_facility", { p_host: body.host, p_facility: body.facility })); return { ok: true }; }
     if (p === "/api/facilities") {
-      if (method === "POST") { const r = await sb.from("tb_facilities").upsert({ org_id: ORG_ID, name: (body.name || "").trim().slice(0, 80), cidr: (body.cidr || "").trim() }, { onConflict: "org_id,cidr" });
+      if (method === "POST") { const list = (body.cidrs || [body.cidr]).filter(Boolean).map(c => ({ org_id: ORG_ID, name: (body.name || "").trim().slice(0, 80), cidr: String(c).trim() }));
+        const r = await sb.from("tb_facilities").upsert(list, { onConflict: "org_id,cidr" });
         if (r.error) fail(/cidr|inet|network/i.test(r.error.message) ? "invalid IP or CIDR" : r.error.message); }
       if (method === "DELETE") ok(await sb.from("tb_facilities").delete().eq("id", Number(q.get("id"))));
       return facilities(); }

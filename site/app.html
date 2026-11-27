@@ -29,22 +29,26 @@ code{background:var(--line);padding:1px 5px;border-radius:4px;font-size:12px;wor
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
 .ev-login,.ev-online{color:#2e7d32}.ev-logoff,.ev-offline{color:#9e9e9e}.ev-lock,.ev-unlock{color:#546e7a}.ev-crm_login{color:#1565c0;font-weight:600}.ev-crm_logout{color:#8e24aa;font-weight:600}
 input[type=number]{width:90px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:14px}.tile{padding:12px 14px}.tile b{display:block;font-size:26px}.tile span{color:var(--mut);font-size:12px}
+#live tr.mr{cursor:pointer}#live tr.mr:hover{background:var(--bg)}#live tr.det>td{white-space:normal;background:var(--bg);padding:14px}.chev{display:inline-block;width:14px;color:var(--mut);transition:transform .15s}tr.open .chev{transform:rotate(90deg)}
+.sub{margin:14px 0 6px;font-size:13px;font-weight:600}.det table{font-size:13px}.det .card{background:var(--card)}.info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 18px;margin-bottom:6px}.info div{white-space:normal}.info small{color:var(--mut);display:block;font-size:11px}
 </style></head><body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script src="js/api.js"></script>
 
 <header><h1>Track<span>obee</span></h1><b id="org"></b><span class="sp"></span><span id="who" class="m"></span><span id="role" class="b role"></span>
-<button onclick="logout()">Sign out</button></header>
+<a href="docs.html" target="_blank" class="m">Docs</a><button onclick="logout()">Sign out</button></header>
 <nav id="nav"></nav>
 <main>
 <section id="s-dash">
- <h2>Availability by facility</h2><div class="grid" id="fac"></div>
- <h2>Live: who is on which system</h2>
- <div class="bar"><input id="q" placeholder="Filter user / host / IP / facility"></div>
- <div class="card"><table><thead><tr><th>Employee</th><th>Facility</th><th>Computer</th><th>Status</th><th>Now using</th><th>Idle</th><th>Battery</th><th>Location</th><th>Public IP</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
- <h2>Today <span class="m" id="todaynote"></span></h2>
- <p class="m" style="margin-top:0">Worked = screen unlocked and keyboard/mouse used within the last 2 minutes. Away = no activity for more than 2 minutes, or the screen is locked.</p>
- <div class="card"><table><thead><tr><th>Employee</th><th>Computer</th><th>Worked</th><th>Away</th><th>First seen</th><th>Last seen</th></tr></thead><tbody id="today"></tbody></table></div>
+ <div class="tiles" id="tiles"></div>
+ <div class="card pad" id="onboard" style="display:none;margin-top:12px"><b>No computers are reporting yet.</b>
+  <p class="m" style="margin:6px 0 10px">Install the agent on each employee PC (no admin rights needed). The computer appears here within a minute.</p>
+  <div class="bar" id="onbtns"></div></div>
+ <div class="bar" style="margin-top:14px"><h2 style="margin:0">Employees</h2><span class="sp"></span><input id="q" placeholder="Search name, computer, serial, app, IP, location…" style="min-width:260px">
+  <select id="qf"><option value="">All facilities</option></select><select id="qs"><option value="">All statuses</option><option value="available">Available</option><option value="away">Away</option><option value="locked">Locked</option><option value="offline">Offline</option></select><span class="m" id="qcount"></span></div>
+ <p class="m" style="margin:2px 0 8px">Click an employee for their history. <b>Worked</b> = unlocked and active within the last 2 minutes. <b>Away</b> = no activity for more than 2 minutes, or screen locked.</p>
+ <div class="card"><table><thead><tr><th>Employee</th><th>Facility</th><th>Computer</th><th>Serial no.</th><th>Status</th><th>Using now</th><th>Worked today</th><th>Away today</th><th>Battery</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
 </section>
 
 <section id="s-rep">
@@ -63,32 +67,33 @@ input[type=number]{width:90px}
  <div class="card"><table><thead><tr><th>Employee</th><th>Application</th><th>Time</th><th>Share</th></tr></thead><tbody id="rapp"></tbody></table></div>
 </section>
 
-<section id="s-hist">
- <h2>Login / logoff history</h2>
- <p class="m" id="histnote">Every endpoint's session events: sign-in and sign-out of the PC, lock/unlock, going offline/online, and website logins and logouts.</p>
- <div class="bar"><label>From <input type="date" id="hf"></label><label>To <input type="date" id="ht2"></label>
-  <button onclick="hpreset(0)">Today</button><button onclick="hpreset(1)">Yesterday</button><button onclick="hpreset(7)">Last 7 days</button><button onclick="hpreset(30)">Last 30 days</button></div>
- <div class="bar"><select id="ht" onchange="drawEvents()"><option value="">All events</option><option value="login,logoff">PC sign-in / sign-out</option><option value="lock,unlock">Lock / unlock</option><option value="online,offline">Online / offline</option><option value="crm_login,crm_logout">Website login / logout</option></select>
-  <input id="hq" placeholder="Filter employee / computer / IP" oninput="drawEvents()"><button class="pri" onclick="loadEvents()">Load</button><a href="#" onclick="TB.exportEvents($('hf').value,$('ht2').value).catch(e=>alert(e.message));return false">Export CSV</a><span class="m" id="hcnt"></span></div>
- <div class="card"><table><thead><tr><th>Time</th><th>Event</th><th>Website user</th><th>OS user</th><th>Computer</th><th>Facility</th><th>Public IP</th><th>Source</th><th>Detail</th></tr></thead><tbody id="ev"></tbody></table></div>
-</section>
-
 <section id="s-dev">
  <h2>Devices</h2>
- <p class="m">Everything each agent reports about its computer: serial number, model, OS, hardware, battery, Wi-Fi and approximate location (from the public IP, city level). Click a row for all fields.</p>
- <div class="bar"><input id="dq" placeholder="Filter by computer / serial / model / user" oninput="drawDevices()"><button onclick="loadDevices()">Refresh</button></div>
- <div class="card"><table><thead><tr><th>Computer</th><th>Model</th><th>Serial number</th><th>OS</th><th>CPU / RAM</th><th>Battery</th><th>Location</th><th>Wi-Fi</th><th>Agent</th><th>Updated</th></tr></thead><tbody id="dv"></tbody></table></div>
+ <p class="m">Everything each agent reports about its computer. Search any attribute: type plain words (matches every field), or use <code>field:value</code>, <code>field=exact</code>, <code>field&gt;number</code>, <code>-field:value</code> to exclude. Examples: <code>os:windows</code> · <code>ram_gb&gt;8</code> · <code>battery_percent&lt;20</code> · <code>-os:windows</code> · <code>manufacturer:lenovo serial:PF</code>. Click a row for all fields.</p>
+ <div class="bar"><input id="dq" placeholder="Search…" style="min-width:260px" oninput="drawDevices()"><select id="dattr" onchange="drawDevices()"><option value="">in all attributes</option></select>
+  <select id="dfac" onchange="drawDevices()"><option value="">All facilities</option></select><button onclick="loadDevices()">Refresh</button><span class="m" id="dcount"></span></div>
+ <div class="card"><table><thead><tr><th>Computer</th><th>Facility</th><th>Model</th><th>Serial number</th><th>OS</th><th>CPU / RAM</th><th>Battery</th><th>Location</th><th>Wi-Fi</th><th>Agent</th><th>Updated</th></tr></thead><tbody id="dv"></tbody></table></div>
 </section>
 
 <section id="s-fac">
- <h2>Facilities: map an IP range to a site</h2>
- <p class="m">Match uses the public IP first, then the LAN IP. The most specific range wins.</p>
- <div class="bar" id="facform"><input id="fn" placeholder="Facility name"><input id="fc" placeholder="IP or CIDR, e.g. 203.0.113.0/28"><button class="pri" onclick="addFac()">Add facility</button></div>
+ <h2>Facilities</h2>
+ <p class="m">A facility is a site (office, branch, shop). Pick what identifies it: its <b>local network</b> (e.g. 192.168.6.*), an <b>IP range</b> (e.g. 192.168.6.10 to 192.168.6.50), or its <b>public IP</b> (the office's internet address). Add as many entries as you need under the same name. The local network is checked first, then the public IP. You can also move a single computer by hand (Devices tab, or click an employee on the Dashboard).</p>
+ <div class="bar" id="facform"><input id="fn" placeholder="Facility name">
+  <select id="ft" onchange="facType()"><option value="lan">Local network (LAN)</option><option value="range">IP range</option><option value="pub">Public IP</option></select>
+  <span id="ft-lan"><input id="fc" placeholder="192.168.6.*  or  192.168.6.0/24" style="min-width:230px"></span>
+  <span id="ft-range" style="display:none"><input id="fr1" placeholder="From  192.168.6.10"> <input id="fr2" placeholder="To  192.168.6.50"></span>
+  <span id="ft-pub" style="display:none"><input id="fp" placeholder="103.249.205.154" style="min-width:200px"></span>
+  <button class="pri" onclick="addFac()">Add</button></div>
+ <p class="m" id="fthint" style="margin:4px 0"></p>
  <div class="msg err" id="facmsg"></div>
- <div class="card"><table><tbody id="fl"></tbody></table></div>
+ <div class="card"><table><thead><tr><th>Facility</th><th>Type</th><th>Segment</th><th>Computers now</th><th></th></tr></thead><tbody id="fl"></tbody></table></div>
+ <h2>Unmapped computers: suggested segments</h2>
+ <p class="m" style="margin-top:0">Computers that match no facility yet, grouped by network. Name a group and add it in one click.</p>
+ <div class="card"><table><thead><tr><th>Network</th><th>Computers</th><th>Facility name</th><th></th></tr></thead><tbody id="fsug"></tbody></table></div>
 </section>
 
 <section id="s-dep">
+ <p class="m">Full guide with every API, field and example: <a href="docs.html" target="_blank">open the documentation</a>.</p>
  <h2>1. Send login / logout events from your website (API)</h2>
  <p class="m">Works with any website or app, whatever sign-in it uses. When a user signs in or out, your backend makes one call. Trackobee links that user to the PC they are sitting at (by the IP you pass; for an exact link use step 2).</p>
  <div class="card pad">
@@ -151,37 +156,85 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const LBL={available:"Available",away:"Away",locked:"Locked",offline:"Offline"},RL={admin:"Admin",sub_admin:"Sub-admin",read_only:"Read-only"};
 const EVL={login:"PC sign-in",logoff:"PC sign-out",lock:"Locked",unlock:"Unlocked",online:"Came online",offline:"Went offline",crm_login:"Website login",crm_logout:"Website logout"};
 const api=(...a)=>TB.api(...a);
-let ME,LIVE=[],EVS=[],DEP,ORG,timer;
+let ME,LIVE=[],DEP,ORG,timer,TODAY={},tick=0;const OPENU=new Set(),MAIN={},DETR={};let FACS=[];
 function show(id){document.querySelectorAll("main section").forEach(s=>s.classList.toggle("on",s.id=="s-"+id));
  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.id==id));
- if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac();if(id=="hist")loadEvents();if(id=="rep")loadReport();if(id=="dev")loadDevices()}
+ if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac();if(id=="rep")loadReport();if(id=="dev")loadDevices()}
 async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner"){location.href="owner.html";return}
  $("org").textContent=ME.org;$("who").textContent=ME.name;$("role").textContent=RL[ME.role];
- const tabs=[["dash","Dashboard"],["rep","Reports"],["hist","History"],["dev","Devices"],["fac","Facilities"]];
- if(ME.role!="read_only")tabs.push(["dep","Integrate"]);
- if(ME.role=="admin")tabs.push(["usr","Users"]);
+ const tabs=[["dash","Dashboard"],["rep","Reports"],["dev","Devices"],["fac","Facilities"]];
+ if(ME.role!="read_only")tabs.push(["dep","Install & API"]);
+ if(ME.role=="admin")tabs.push(["usr","Team"]);
  if(ME.role!="read_only")tabs.push(["set","Settings"]);
  $("nav").innerHTML=tabs.map(([i,n])=>`<button data-id="${i}">${n}</button>`).join("");
  $("nav").onclick=e=>{if(e.target.dataset.id)show(e.target.dataset.id)};
  if(ME.role=="read_only")$("facform").style.display="none";
- setRange("rf","rt",6);setRange("hf","ht2",2);$("q").oninput=drawLive;
- show("dash");live();loadToday();timer=setInterval(()=>{if($("s-dash").classList.contains("on")){live();loadToday()}},15000)}
+ setRange("rf","rt",6);$("q").oninput=drawLive;$("qf").onchange=$("qs").onchange=drawLive;
+ if(ME.role!="read_only")$("onbtns").innerHTML=[["windows","Windows"],["mac","macOS"],["linux","Linux"]].map(([k,n])=>`<button class="pri" onclick="TB.downloadInstaller('${k}').catch(e=>alert(e.message))">Download for ${n}</button>`).join("")+' <a href="docs.html" target="_blank">Installation guide</a>';
+ else $("onbtns").textContent="Ask an admin to install the agent.";
+ try{FACS=await api("/api/facilities")}catch(e){}
+ show("dash");live();timer=setInterval(()=>{if($("s-dash").classList.contains("on"))live()},5000)}
 // ---- dates + durations
 const ymd=d=>d.toLocaleDateString("en-CA");
 function setRange(a,b,daysBack){const t=new Date(),f=new Date();f.setDate(f.getDate()-daysBack);$(a).value=ymd(f);$(b).value=ymd(t)}
 function dur(s){s=Math.max(0,Math.round(s));if(s>0&&s<60)return"<1m";const h=Math.floor(s/3600),mi=Math.floor(s%3600/60);return h?`${h}h ${String(mi).padStart(2,"0")}m`:`${mi}m`}
 const hrs=s=>(s/3600).toFixed(2)+" h";
 async function logout(){await TB.signOut();location.href="login.html"}
-// ---- dashboard
-function drawLive(){const q=$("q").value.toLowerCase(),f={};
- LIVE.forEach(r=>{(f[r.facility]??={available:0,away:0,locked:0,offline:0})[r.state]++});
- $("fac").innerHTML=Object.entries(f).sort().map(([n,c])=>`<div class="card fc"><b>${esc(n)}</b><span class="big">${c.available}</span> available<br><small>${c.away} away · ${c.locked} locked · ${c.offline} offline</small></div>`).join("")||'<p class="m">No agents reporting yet. See the Integrate tab.</p>';
- $("live").innerHTML=LIVE.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>`<tr><td>${esc(r.crm_user||r.os_user)}${r.mismatch?' <span class="warn" title="Website user differs from the OS user">⚠</span>':""}</td><td>${esc(r.facility)}</td><td>${esc(r.host)}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${esc(r.state=="offline"||r.state=="locked"?"":r.app||"")}</td><td>${m(r.idle)}</td><td>${batt(r)}</td><td>${esc(r.location||"")}</td><td>${esc(r.pub_ip)}</td><td>${t(r.last_seen)}</td></tr>`).join("")}
-const batt=r=>r.battery==null?"":`${r.battery}%${r.charging?" ⚡":""}`;
-async function live(){try{LIVE=await api("/api/live");drawLive()}catch(e){}}
-async function loadToday(){try{const d=ymd(new Date()),r=await api(`/api/work?from=${d}&to=${d}`);
- $("todaynote").textContent="· "+new Date().toLocaleDateString([], {weekday:"long",day:"numeric",month:"short"});
- $("today").innerHTML=r.map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.hosts.join(", "))}</td><td><b>${dur(a.worked)}</b></td><td>${dur(a.away+a.locked)}</td><td>${t(a.first)}</td><td>${t(a.last)}</td></tr>`).join("")||'<tr><td class="m">No activity recorded today yet.</td></tr>'}catch(e){}}
+// ---- dashboard: one table; click an employee for their history
+const ukey=r=>r.crm_user||r.os_user,batt=r=>r.battery==null?"":`${r.battery}%${r.charging?" ⚡":""}`;
+function cells(r,k){const u=ukey(r),w=TODAY[u],gone=r.state=="offline"||r.state=="locked";
+ return `<td><span class="chev">▸</span>${esc(u)}${r.mismatch?' <span class="warn" title="Website user differs from the OS user">⚠</span>':""}</td><td>${esc(r.facility)}${r.facility_source=="manual"?' <span class="m" title="Set by hand">✎</span>':""}</td><td>${esc(r.host)}</td><td>${esc(r.serial||"")}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${esc(gone?"":r.app||"")}</td><td>${w?`<b>${dur(w.worked)}</b>`:"–"}</td><td>${w?dur(w.away+w.locked):"–"}</td><td>${batt(r)}</td><td>${t(r.last_seen)}</td>`}
+function drawLive(){
+ const c={available:0,away:0,locked:0,offline:0};LIVE.forEach(r=>c[r.state]++);
+ const tw=Object.values(TODAY).reduce((a,x)=>a+x.worked,0);
+ $("tiles").innerHTML=[["Available",c.available],["Away",c.away],["Locked",c.locked],["Offline",c.offline],["Worked today (all)",dur(tw)]].map(([n,v])=>`<div class="card tile"><b>${v}</b><span>${n}</span></div>`).join("");
+ $("onboard").style.display=LIVE.length?"none":"block";
+ fillFacSelects();
+ const q=$("q").value.toLowerCase().trim(),qf=$("qf").value,qs=$("qs").value,tb=$("live"),want=[];
+ const shown=LIVE.filter(r=>(!qf||r.facility==qf)&&(!qs||r.state==qs)&&(!q||[ukey(r),r.os_user,r.crm_user,r.host,r.serial,r.facility,r.app,r.ip,r.pub_ip,r.location,r.model,LBL[r.state]].join(" ").toLowerCase().includes(q)));
+ $("qcount").textContent=shown.length==LIVE.length?"":`${shown.length} of ${LIVE.length}`;
+ shown.forEach(r=>{
+  const k=r.host+"|"+ukey(r);let tr=MAIN[k];if(!tr){tr=MAIN[k]=document.createElement("tr");tr.className="mr";tr.dataset.k=k}
+  tr.dataset.u=ukey(r);tr.dataset.h=r.host;tr.classList.toggle("open",OPENU.has(k));tr.innerHTML=cells(r,k);want.push(tr);
+  if(OPENU.has(k)){let d=DETR[k];if(!d){d=DETR[k]=document.createElement("tr");d.className="det";d.dataset.k=k;d.innerHTML=`<td colspan="10"></td>`;initDetail(d,r)}else refreshInfo(d,r);want.push(d)}});
+ if(!LIVE.length&&!want.length)tb.innerHTML="";
+ want.forEach((el,i)=>{if(tb.children[i]!==el)tb.insertBefore(el,tb.children[i]||null)});
+ while(tb.children.length>want.length)tb.lastElementChild.remove()}
+async function live(){try{LIVE=await api("/api/live");
+ if(tick++%3==0){const d=ymd(new Date()),w=await api(`/api/work?from=${d}&to=${d}`);TODAY={};w.forEach(x=>TODAY[x.user]=x)}drawLive()}catch(e){}}
+$("live").onclick=e=>{if(e.target.closest("tr.det"))return;const tr=e.target.closest("tr.mr");if(!tr)return;const k=tr.dataset.k;OPENU.has(k)?OPENU.delete(k):OPENU.add(k);drawLive()};
+
+// ---- facility helpers (select options, manual move)
+const facNames=()=>[...new Set(FACS.map(f=>f.name))].sort();
+function fillFacSelects(){const names=facNames().concat(LIVE.some(r=>r.facility=="Unmapped")||!FACS.length?["Unmapped"]:[]);
+ for(const id of ["qf","dfac"]){const el=$(id);if(!el||document.activeElement===el)continue;const cur=el.value,html='<option value="">All facilities</option>'+[...new Set(names)].map(n=>`<option ${n==cur?"selected":""}>${esc(n)}</option>`).join("");if(el.dataset.h!==html){el.dataset.h=html;el.innerHTML=html;el.value=cur}}}
+function facSelect(host,facility,source){const sel=source!="manual"?"__auto__":facility=="Unmapped"?"__none__":facility;
+ return `<select class="facsel" data-host="${esc(host)}" title="Move this computer to a facility"><option value="__auto__" ${sel=="__auto__"?"selected":""}>Automatic (by network)</option>`+facNames().map(n=>`<option ${n==sel?"selected":""}>${esc(n)}</option>`).join("")+`<option value="__none__" ${sel=="__none__"?"selected":""}>No facility</option></select>`}
+async function moveDevice(host,val){try{await api("/api/device/facility","POST",{host,facility:val=="__auto__"?null:val});await live();if($("s-dev").classList.contains("on"))loadDevices();if($("s-fac").classList.contains("on"))loadFac()}catch(e){alert(e.message)}}
+document.addEventListener("change",e=>{const sel=e.target.closest&&e.target.closest("select.facsel");if(sel)moveDevice(sel.dataset.host,sel.value)});
+// employee history dropdown
+function infoHtml(r){const d=r.dev||{},i=d.info||{},tl=d.telemetry||{},lo=d.location||{},f=(n,v)=>v?`<div><small>${n}</small>${esc(v)}</div>`:"";
+ return f("Computer",r.host)+f("Serial number",r.serial)+f("Model",[i.manufacturer,i.model_version||i.model].filter(Boolean).join(" "))+f("Operating system",i.os)+f("CPU / RAM",[i.cpu,i.ram_gb?i.ram_gb+" GB":i.ram].filter(Boolean).join(" · "))
+  +f("Battery",r.battery==null?"":batt(r)+(i.battery_health_percent?` (health ${i.battery_health_percent}%)`:""))+f("Wi-Fi",tl.wifi_ssid)+f("Location",[lo.city,lo.region,lo.country].filter(Boolean).join(", "))+f("Public IP",r.pub_ip)+f("Local IP",r.ip)+f("Agent",d.agent_version)}
+function refreshInfo(d,r){const fb=d.querySelector('.facbar');if(fb){if(ME.role=='read_only')fb.textContent='Facility: '+r.facility;else if(!fb.contains(document.activeElement)){const h=facSelect(r.host,r.facility,r.facility_source);if(fb.dataset.h!==h){fb.dataset.h=h;fb.innerHTML=`<label>Facility ${h}</label>`}}}const el=d.querySelector(".info");if(el){const h=infoHtml(r);if(el.dataset.h!==h){el.dataset.h=h;el.innerHTML=h}}}
+function initDetail(d,r){const td=d.firstElementChild;
+ td.innerHTML=`<div class="info"></div><div class="bar facbar"></div><div class="bar"><label>From <input type="date" class="df"></label><label>To <input type="date" class="dtt"></label>
+  <button data-p="0">Today</button><button data-p="1">Yesterday</button><button data-p="7">7 days</button><button data-p="30">30 days</button><button data-p="r">Refresh</button></div><div class="dout m">Loading…</div>`;
+ refreshInfo(d,r);const f=td.querySelector(".df"),t2=td.querySelector(".dtt");setRange_(f,t2,6);
+ td.onclick=e=>{const b=e.target.closest("button[data-p]");if(!b)return;if(b.dataset.p!="r"){const n=+b.dataset.p,t=new Date(),fr=new Date();if(n==1){t.setDate(t.getDate()-1);fr.setDate(fr.getDate()-1)}else fr.setDate(fr.getDate()-Math.max(0,n-1));f.value=ymd(fr);t2.value=ymd(t)}fillDetail(d)};
+ f.onchange=t2.onchange=()=>fillDetail(d);fillDetail(d)}
+function setRange_(f,t,back){const a=new Date(),b=new Date();b.setDate(b.getDate()-back);f.value=ymd(b);t.value=ymd(a)}
+async function fillDetail(d){const out=d.querySelector(".dout"),u=MAIN[d.dataset.k].dataset.u,f=d.querySelector(".df").value,tt=d.querySelector(".dtt").value;
+ if(!f||!tt||f>tt){out.textContent="Choose a valid date range";return}out.textContent="Loading…";
+ try{const[w,ap,ev]=await Promise.all([api(`/api/work?from=${f}&to=${tt}`),api(`/api/apps?from=${f}&to=${tt}`),api(`/api/events?from=${f}&to=${tt}`)]);
+  const W=w.filter(x=>x.user==u),A=ap.filter(x=>x.user==u&&x.seconds>=30).slice(0,8),E=ev.filter(x=>x.crm_user==u||x.os_user==u),totA=A.reduce((a,x)=>a+x.seconds,0),sum=W.reduce((a,x)=>({w:a.w+x.worked,a:a.a+x.away+x.locked}),{w:0,a:0});
+  out.innerHTML=`<div class="sub">Per day · total worked <b>${dur(sum.w)}</b>, away ${dur(sum.a)}</div>
+  <div class="card"><table><thead><tr><th>Date</th><th>Computer</th><th>Worked</th><th>Away</th><th>First seen</th><th>Last seen</th></tr></thead><tbody>${W.map(x=>`<tr><td>${esc(x.day)}</td><td>${esc(x.hosts.join(", "))}</td><td><b>${dur(x.worked)}</b></td><td>${dur(x.away+x.locked)}</td><td>${t(x.first)}</td><td>${t(x.last)}</td></tr>`).join("")||'<tr><td class="m">No activity in this range.</td></tr>'}</tbody></table></div>
+  <div class="sub">Applications used</div>
+  <div class="card"><table><tbody>${A.map(x=>`<tr><td>${esc(x.app)}</td><td>${dur(x.seconds)}</td><td>${Math.round(100*x.seconds/(totA||1))}%</td></tr>`).join("")||'<tr><td class="m">No application data.</td></tr>'}</tbody></table></div>
+  <div class="sub">Sign-in / sign-out and status history · ${E.length} event${E.length==1?"":"s"}${E.length>300?" (latest 300 shown)":""}</div>
+  <div class="card" style="max-height:340px"><table><thead><tr><th>Time</th><th>Event</th><th>Computer</th><th>Detail</th></tr></thead><tbody>${E.slice(0,300).map(x=>`<tr><td>${dt(x.ts)}</td><td class="ev-${esc(x.type)}">${esc(EVL[x.type]||x.type)}</td><td>${esc(x.host||"")}</td><td>${esc(x.detail||"")}</td></tr>`).join("")||'<tr><td class="m">No events in this range.</td></tr>'}</tbody></table></div>`;
+ }catch(e){out.textContent=e.message}}
 // ---- reports (any date range)
 let WORK=[],APPS=[];
 function preset(n){const t=new Date(),f=new Date();if(n==1){t.setDate(t.getDate()-1);f.setDate(f.getDate()-1)}else f.setDate(f.getDate()-Math.max(0,n-1));$("rf").value=ymd(f);$("rt").value=ymd(t);loadReport()}
@@ -193,32 +246,64 @@ function drawReport(){const e=$("remp").value,rows=WORK.filter(w=>!e||w.user==e)
  rows.forEach(w=>{const a=by[w.user]??={days:0,worked:0,away:0};a.days++;a.worked+=w.worked;a.away+=w.away+w.locked});
  $("rtot").innerHTML=Object.entries(by).sort().map(([u,a])=>`<tr><td>${esc(u)}</td><td>${a.days}</td><td><b>${dur(a.worked)}</b> <span class="m">(${hrs(a.worked)})</span></td><td>${dur(a.worked/a.days)}</td><td>${dur(a.away)}</td></tr>`).join("")||'<tr><td class="m">No data in this range.</td></tr>';
  $("rday").innerHTML=rows.map(w=>`<tr><td>${esc(w.day)}</td><td>${esc(w.user)}</td><td>${esc(w.hosts.join(", "))}</td><td><b>${dur(w.worked)}</b></td><td>${dur(w.away+w.locked)}</td><td>${dur(w.locked)}</td><td>${t(w.first)}</td><td>${t(w.last)}</td></tr>`).join("")||'<tr><td class="m">No data in this range.</td></tr>';
- const ap=APPS.filter(a=>!e||a.user==e),tot={};ap.forEach(a=>tot[a.user]=(tot[a.user]||0)+a.seconds);const seen={};
+ const ap=APPS.filter(a=>(!e||a.user==e)&&a.seconds>=30),tot={};ap.forEach(a=>tot[a.user]=(tot[a.user]||0)+a.seconds);const seen={};
  $("rapp").innerHTML=ap.filter(a=>(seen[a.user]=(seen[a.user]||0)+1)<=10).map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.app)}</td><td>${dur(a.seconds)}</td><td>${Math.round(100*a.seconds/(tot[a.user]||1))}%</td></tr>`).join("")||'<tr><td class="m">No application data yet.</td></tr>'}
 function exportReport(){TB.exportWork($("rf").value,$("rt").value).catch(e=>alert(e.message))}
-// ---- login / logoff history (any date range)
-function hpreset(n){const t=new Date(),f=new Date();if(n==1){t.setDate(t.getDate()-1);f.setDate(f.getDate()-1)}else f.setDate(f.getDate()-Math.max(0,n-1));$("hf").value=ymd(f);$("ht2").value=ymd(t);loadEvents()}
-async function loadEvents(){const f=$("hf").value,tt=$("ht2").value;if(!f||!tt||f>tt){$("hcnt").textContent="Choose a valid date range";return}
- EVS=await api(`/api/events?from=${f}&to=${tt}`);drawEvents();
- try{const o=await api("/api/org");$("histnote").textContent=`Every endpoint's session events: PC sign-in and sign-out, lock/unlock, offline/online, and website logins and logouts. Kept for ${o.event_retention_days} days.`}catch(e){}}
-// ---- devices
+// ---- devices (search any attribute)
 let DEVS=[];
-async function loadDevices(){DEVS=await api("/api/devices");drawDevices()}
-function drawDevices(){const q=$("dq").value.toLowerCase(),open=window.OPEN||(window.OPEN=new Set());
- $("dv").innerHTML=DEVS.filter(d=>JSON.stringify(d).toLowerCase().includes(q)).map(d=>{const i=d.info||{},tl=d.telemetry||{},lo=d.location||{};
-  const main=`<tr style="cursor:pointer" data-h="${esc(d.host)}"><td>${esc(d.host)}</td><td>${esc([i.manufacturer,i.model_version||i.model].filter(Boolean).join(" "))}</td><td>${esc(i.serial_number||i.board_serial||"")}</td><td>${esc(i.os||"")}</td><td>${esc([i.cpu,i.ram_gb?i.ram_gb+" GB":i.ram].filter(Boolean).join(" · "))}</td><td>${tl.battery_percent==null?"":tl.battery_percent+"%"+(tl.charging?" ⚡":"")}${i.battery_health_percent?` <span class="m">(health ${i.battery_health_percent}%)</span>`:""}</td><td>${esc([lo.city,lo.country].filter(Boolean).join(", "))}</td><td>${esc(tl.wifi_ssid||"")}</td><td>${esc(d.agent_version||"")}</td><td>${dt(d.updated_at)}</td></tr>`;
-  return main+(open.has(d.host)?`<tr><td colspan="10"><pre style="margin:0;white-space:pre-wrap;font:12px ui-monospace,monospace">${esc(JSON.stringify({info:i,telemetry:tl,location:lo},null,2))}</pre></td></tr>`:"")}).join("")||'<tr><td class="m">No devices yet.</td></tr>';
- $("dv").onclick=e=>{const r=e.target.closest("tr[data-h]");if(!r)return;const h=r.dataset.h;open.has(h)?open.delete(h):open.add(h);drawDevices()}}
-function drawEvents(){const ty=$("ht").value?$("ht").value.split(","):null,q=$("hq").value.toLowerCase();
- const rows=EVS.filter(e=>(!ty||ty.includes(e.type))&&(!q||JSON.stringify(e).toLowerCase().includes(q)));
- $("hcnt").textContent=rows.length+" event"+(rows.length==1?"":"s");
- $("ev").innerHTML=rows.map(x=>`<tr><td>${dt(x.ts)}</td><td class="ev-${esc(x.type)}">${esc(EVL[x.type]||x.type)}</td><td>${esc(x.crm_user||"")}</td><td>${esc(x.os_user||"")}</td><td>${esc(x.host||"")}</td><td>${esc(x.facility||"")}</td><td>${esc(x.pub_ip||"")}</td><td>${esc(x.source||"")}</td><td>${esc(x.detail||"")}</td></tr>`).join("")||'<tr><td class="m">No events in this range.</td></tr>'}
+async function loadDevices(){DEVS=await api("/api/devices");try{FACS=await api("/api/facilities")}catch(e){}drawDevices()}
+function flat(d){const o={computer:d.host,host:d.host,facility:d.fac||"",serial:(d.info||{}).serial_number||"",agent_version:d.agent_version||"",updated:dt(d.updated_at)};
+ const add=(src,pre)=>Object.entries(src||{}).forEach(([k,v])=>{o[pre+k]=v&&typeof v=="object"?JSON.stringify(v):String(v)});add(d.info,"");add(d.telemetry,"");add(d.location,"location_");return o}
+function devMatch(f,qs,attr){const toks=qs.trim().split(/\s+/).filter(Boolean);
+ return toks.every(t=>{let neg=false;if(t.length>1&&t[0]=="-"){neg=true;t=t.slice(1)}let ok;const m=t.match(/^([A-Za-z0-9_.]+)(>=|<=|:|=|>|<)(.+)$/);
+  if(m){const key=m[1].toLowerCase(),op=m[2],val=m[3].toLowerCase(),keys=Object.keys(f).filter(k=>k.toLowerCase().includes(key));
+   ok=keys.some(k=>{const v=String(f[k]).toLowerCase();if(op==":")return v.includes(val);if(op=="=")return v==val;const a=parseFloat(v),b=parseFloat(val);if(isNaN(a)||isNaN(b))return false;return op==">"?a>b:op=="<"?a<b:op==">="?a>=b:a<=b})}
+  else{const x=t.toLowerCase();ok=attr?String(f[attr]??"").toLowerCase().includes(x):Object.values(f).some(v=>String(v).toLowerCase().includes(x))}
+  return neg?!ok:ok})}
+function drawDevices(){const q=$("dq").value,attr=$("dattr").value,qf=$("dfac").value,open=window.OPEN||(window.OPEN=new Set());
+ const flats=DEVS.map(d=>({d,f:flat(d)})),keys=[...new Set(flats.flatMap(x=>Object.keys(x.f)))].filter(k=>k!="host").sort(),ah='<option value="">in all attributes</option>'+keys.map(k=>`<option ${k==attr?"selected":""}>${esc(k)}</option>`).join("");
+ if($("dattr").dataset.h!==ah){$("dattr").dataset.h=ah;$("dattr").innerHTML=ah;$("dattr").value=attr}
+ fillFacSelects();
+ const rows=flats.filter(x=>(!qf||x.d.fac==qf)&&devMatch(x.f,q,attr));
+ $("dcount").textContent=rows.length==DEVS.length?`${DEVS.length} computers`:`${rows.length} of ${DEVS.length} computers`;
+ $("dv").innerHTML=rows.map(({d})=>{const i=d.info||{},tl=d.telemetry||{},lo=d.location||{};
+  const main=`<tr style="cursor:pointer" data-h="${esc(d.host)}"><td>${esc(d.host)}</td><td>${ME.role!="read_only"&&d.fac!==undefined?facSelect(d.host,d.fac||"Unmapped",d.fac_src):esc(d.fac||"")}</td><td>${esc([i.manufacturer,i.model_version||i.model].filter(Boolean).join(" "))}</td><td>${esc(i.serial_number||i.board_serial||"")}</td><td>${esc(i.os||"")}</td><td>${esc([i.cpu,i.ram_gb?i.ram_gb+" GB":i.ram].filter(Boolean).join(" · "))}</td><td>${tl.battery_percent==null?"":tl.battery_percent+"%"+(tl.charging?" ⚡":"")}${i.battery_health_percent?` <span class="m">(health ${i.battery_health_percent}%)</span>`:""}</td><td>${esc([lo.city,lo.country].filter(Boolean).join(", "))}</td><td>${esc(tl.wifi_ssid||"")}</td><td>${esc(d.agent_version||"")}</td><td>${dt(d.updated_at)}</td></tr>`;
+  return main+(open.has(d.host)?`<tr><td colspan="11"><pre style="margin:0;white-space:pre-wrap;font:12px ui-monospace,monospace">${esc(JSON.stringify({info:i,telemetry:tl,location:lo},null,2))}</pre></td></tr>`:"")}).join("")||'<tr><td class="m">No computers match.</td></tr>';
+ $("dv").onclick=e=>{if(e.target.closest("select"))return;const r=e.target.closest("tr[data-h]");if(!r)return;const h=r.dataset.h;open.has(h)?open.delete(h):open.add(h);drawDevices()}}
 // ---- facilities
 const canManage=()=>ME.role!="read_only";
-function drawFac(l){$("fl").innerHTML=l.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.cidr)}</td><td>${canManage()?`<button onclick="delFac(${+x.id})">Remove</button>`:""}</td></tr>`).join("")||'<tr><td class="m">No facilities yet.</td></tr>'}
-async function loadFac(){drawFac(await api("/api/facilities"))}
-async function addFac(){$("facmsg").textContent="";try{drawFac(await api("/api/facilities","POST",{name:$("fn").value,cidr:$("fc").value}));$("fn").value=$("fc").value=""}catch(e){$("facmsg").textContent=e.message}}
-async function delFac(id){drawFac(await api("/api/facilities?id="+id,"DELETE"))}
+function normCidr(raw){const s=raw.trim().replace(/\s+/g,"");if(!s)return null;if(s.includes(":"))return{cidr:s,single:!s.includes("/")};
+ const star=/(\.\*)+$/.test(s),base=s.replace(/(\.\*)+$/,""),slash=base.split("/"),oct=slash[0].split(".");
+ if(!oct.every(o=>/^\d{1,3}$/.test(o)&&+o<=255)||oct.length>4)return null;
+ let len;if(slash.length==2){len=+slash[1];if(!/^\d+$/.test(slash[1])||len>32||oct.length!=4)return null}else if(oct.length==4&&!star)len=32;else if(oct.length<4)len=oct.length*8;else return null;
+ while(oct.length<4)oct.push("0");let n=(((+oct[0]<<24)>>>0)+(+oct[1]<<16)+(+oct[2]<<8)+(+oct[3]))>>>0;const mask=len==0?0:(0xFFFFFFFF<<(32-len))>>>0;n=(n&mask)>>>0;
+ return{cidr:[n>>>24,(n>>>16)&255,(n>>>8)&255,n&255].join(".")+"/"+len,single:len==32}}
+function seg24(ip){const m=(ip||"").match(/^(\d+\.\d+\.\d+)\.\d+$/);return m?m[1]+".0/24":null}
+const FTHINT={lan:"Whole network: 192.168.6.*  or  192.168.6.0/24 · one computer: 192.168.6.15",range:"Any start and end address. It is converted to the exact network blocks that cover it.",pub:"The office's internet (WAN) address, e.g. 103.249.205.154: every computer behind it. See the suggestions below."};
+function facType(){const t=$("ft").value;for(const k of ["lan","range","pub"])$("ft-"+k).style.display=k==t?"":"none";$("fthint").textContent=FTHINT[t]}
+function ipInt(ip){const o=(ip||"").trim().split(".");if(o.length!=4||o.some(x=>!/^\d{1,3}$/.test(x)||+x>255))return null;return((+o[0]<<24)>>>0)+(+o[1]<<16)+(+o[2]<<8)+(+o[3])}
+function intIp(n){return[Math.floor(n/16777216)%256,Math.floor(n/65536)%256,Math.floor(n/256)%256,n%256].join(".")}
+function rangeToCidrs(a,b){const out=[];while(a<=b){let len=32;while(len>0){const size=Math.pow(2,32-len+1);if(a%size!==0||a+size-1>b)break;len--}out.push(intIp(a)+"/"+len);a+=Math.pow(2,32-len)}return out}
+function isPrivate(cidr){if(cidr.includes(":"))return/^(fc|fd|fe80)/i.test(cidr);const n=ipInt(cidr.split("/")[0]);if(n==null)return false;const o=[Math.floor(n/16777216)%256,Math.floor(n/65536)%256];
+ return o[0]==10||o[0]==127||(o[0]==172&&o[1]>=16&&o[1]<=31)||(o[0]==192&&o[1]==168)||(o[0]==169&&o[1]==254)||(o[0]==100&&o[1]>=64&&o[1]<=127)}
+function drawFac(l){FACS=l;const cnt={};LIVE.forEach(r=>cnt[r.facility]=(cnt[r.facility]||0)+1);
+ $("fl").innerHTML=l.map(x=>`<tr><td>${esc(x.name)}</td><td>${isPrivate(x.cidr)?"Local network":"Public IP"}</td><td>${esc(x.cidr)}</td><td>${cnt[x.name]||0}</td><td>${canManage()?`<button onclick="delFac(${+x.id})">Remove</button>`:""}</td></tr>`).join("")||'<tr><td class="m">No facilities yet. Add your first one above, or use the suggestions below.</td></tr>';
+ const un=LIVE.filter(r=>r.facility=="Unmapped"),g={};
+ un.forEach(r=>{const a=seg24(r.ip);if(a)(g["lan|"+a]??={net:a,kind:"Local network",hosts:[]}).hosts.push(r.host);if(r.pub_ip)(g["pub|"+r.pub_ip]??={net:r.pub_ip+"/32",kind:"Public IP",hosts:[]}).hosts.push(r.host)});
+ $("fsug").innerHTML=Object.values(g).sort((a,b)=>b.hosts.length-a.hosts.length).map((x,i)=>`<tr><td>${esc(x.net)} <span class="m">(${x.kind})</span></td><td>${esc(x.hosts.slice(0,6).join(", "))}${x.hosts.length>6?` +${x.hosts.length-6} more`:""}</td><td>${canManage()?`<input id="sg${i}" placeholder="Facility name">`:""}</td><td>${canManage()?`<button onclick="addSug(${i},'${esc(x.net)}')">Add</button>`:""}</td></tr>`).join("")||'<tr><td class="m">Every computer is mapped to a facility.</td></tr>'}
+async function loadFac(){facType();const[l,lv]=await Promise.all([api("/api/facilities"),api("/api/live").catch(()=>LIVE)]);LIVE=lv;drawFac(l)}
+async function addFac(){$("facmsg").textContent="";const name=$("fn").value.trim(),t=$("ft").value;if(!name){$("facmsg").textContent="Enter a facility name";return}
+ let cidrs=[];
+ if(t=="lan"){const n=normCidr($("fc").value);if(!n){$("facmsg").textContent="Invalid. Use 192.168.6.*, 192.168.6.0/24 or a single IP.";return}
+  if(!isPrivate(n.cidr)){$("facmsg").textContent=`${n.cidr} is a public address. Choose the type "Public IP" instead.`;return}
+  if(n.single&&!confirm(`${n.cidr} matches ONE computer only. To cover a whole network use something like 192.168.6.0/24. Add it anyway?`))return;cidrs=[n.cidr]}
+ else if(t=="range"){const a=ipInt($("fr1").value),b=ipInt($("fr2").value);if(a==null||b==null){$("facmsg").textContent="Enter a valid start and end IPv4 address.";return}if(a>b){$("facmsg").textContent="The start address must not be after the end address.";return}
+  cidrs=rangeToCidrs(a,b);if(cidrs.length>64){$("facmsg").textContent="That range needs too many blocks. Use a smaller range or a network like 192.168.0.0/16.";return}}
+ else{const n=normCidr($("fp").value);if(!n){$("facmsg").textContent="Invalid public IP. Example: 103.249.205.154";return}
+  if(isPrivate(n.cidr)){$("facmsg").textContent=`${n.cidr} is a private (local) address. Choose the type "Local network" instead.`;return}cidrs=[n.cidr]}
+ try{drawFac(await api("/api/facilities","POST",{name,cidrs}));$("fn").value=$("fc").value=$("fr1").value=$("fr2").value=$("fp").value="";live();$("facmsg").className="msg good";$("facmsg").textContent=`Added ${cidrs.length>1?cidrs.length+" blocks":cidrs[0]} to ${name}`}catch(e){$("facmsg").className="msg err";$("facmsg").textContent=e.message}}
+async function addSug(i,net){const name=($("sg"+i).value||"").trim();if(!name){$("sg"+i).focus();return}try{await api("/api/facilities","POST",{name,cidrs:[net]});await live();loadFac()}catch(e){alert(e.message)}}
+async function delFac(id){if(!confirm("Remove this segment?"))return;await api("/api/facilities?id="+id,"DELETE");live();loadFac()}
 // ---- integrate
 async function loadDeploy(){DEP=await api("/api/deploy/info");drawDeploy();
  const names={windows:"Windows",mac:"macOS",linux:"Linux"};

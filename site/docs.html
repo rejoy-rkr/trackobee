@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trackobee documentation</title>
+<style>
+:root{--bg:#f6f7f9;--fg:#1c2127;--card:#fff;--line:#e3e6ea;--mut:#6b7280;--ac:#f5b301;--code:#eef0f3}
+@media(prefers-color-scheme:dark){:root{--bg:#14171a;--fg:#e6e8eb;--card:#1d2125;--line:#2e343a;--mut:#9aa3ad;--code:#262b30}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2}
+header h1{font-size:18px;margin:0}header h1 span{color:var(--ac)}header a{color:var(--fg);margin-left:auto}
+main{max-width:920px;margin:0 auto;padding:8px 16px 64px}
+h1,h2,h3{line-height:1.25}h2{margin-top:40px;padding-top:12px;border-top:1px solid var(--line)}h3{margin-top:28px}
+a{color:#1565c0}@media(prefers-color-scheme:dark){a{color:#7ab7ff}}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:.9em}
+pre{background:var(--code);padding:12px 14px;border-radius:8px;overflow:auto;font-size:13px;line-height:1.5}pre code{background:none;padding:0}
+table{border-collapse:collapse;display:block;overflow-x:auto;margin:12px 0}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}th{background:var(--card)}
+blockquote{margin:12px 0;padding:6px 14px;border-left:4px solid var(--ac);background:var(--card)}
+</style></head><body>
+<header><h1>Track<span>obee</span> docs</h1><a href="app.html">Back to dashboard</a></header>
+<main id="doc">Loading…</main>
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+<script>
+fetch("docs/INTEGRATION.md",{cache:"no-store"}).then(r=>{if(!r.ok)throw 0;return r.text()})
+ .then(t=>{document.getElementById("doc").innerHTML=marked.parse(t);if(location.hash)document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView()})
+ .catch(()=>{document.getElementById("doc").textContent="Could not load the documentation."});
+</script></body></html>

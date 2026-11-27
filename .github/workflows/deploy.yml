@@ -3,7 +3,7 @@ name: Deploy Trackobee
 on:
   push:
     branches: [main]
-    paths: ["site/**", "agent/**", "supabase/**", "packaging/**", ".github/workflows/deploy.yml"]
+    paths: ["site/**", "agent/**", "docs/**", "supabase/**", "packaging/**", ".github/workflows/deploy.yml"]
   workflow_dispatch: {}
 permissions: { contents: read, pages: write, id-token: write }
 concurrency: { group: deploy, cancel-in-progress: false }
@@ -68,6 +68,7 @@ jobs:
           mkdir -p _site/agent _site/installers
           cp -r site/. _site/
           cp agent/trackobee_agent.py _site/agent/
+          mkdir -p _site/docs && cp docs/*.md _site/docs/
           [ -d installers ] && cp -r installers/. _site/installers/ || true
           python3 - <<'PY'
           import json, os
