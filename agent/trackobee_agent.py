@@ -15,7 +15,7 @@ import base64, collections, configparser, csv, datetime, functools, glob, hashli
 import runpy, sqlite3, ssl, struct, tempfile, textwrap, traceback, uuid, xml.etree.ElementTree, zlib  # noqa: F401
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "4.0"
+VERSION = "4.1"
 
 FROZEN = getattr(sys, "frozen", False)
 OSN = platform.system()
@@ -53,11 +53,21 @@ SRV = None
 
 
 # ------------------------------------------------------------------ small helpers
+def _child_env():
+    """A frozen (PyInstaller) binary points LD_LIBRARY_PATH at its own bundled libraries, which breaks system tools such as
+    gdbus, journalctl and nmcli. Give child processes the original environment."""
+    env = dict(os.environ)
+    if FROZEN:
+        for k in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH", "LIBPATH"):
+            if k + "_ORIG" in env: env[k] = env[k + "_ORIG"]
+            else: env.pop(k, None)
+    return env
+
 def sh(cmd, timeout=8, shell=False):
     """Run a command, return stripped stdout ('' on any failure). Never raises, never pops a console window."""
     try:
         kw = {"stdout": subprocess.PIPE, "stderr": subprocess.PIPE, "timeout": timeout, "shell": shell,
-              "encoding": "utf-8", "errors": "replace"}
+              "encoding": "utf-8", "errors": "replace", "env": _child_env()}
         if OSN == "Windows": kw["creationflags"] = 0x08000000        # CREATE_NO_WINDOW
         return (subprocess.run(cmd, **kw).stdout or "").strip()
     except Exception:
