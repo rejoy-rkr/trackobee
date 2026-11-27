@@ -4,9 +4,12 @@
 // These scripts are deliberately thin and stable: they only (1) write the organization's org.json, (2) download the agent,
 // (3) make it start at every login and (4) prove the first report reached the server. Everything else (new data fields, bug fixes,
 // features) ships through the agent itself, which updates itself from the organization's site, so installed PCs never need a new installer.
-export function makeInstaller(os, cfg, packaged = {}) {
+export function makeInstaller(os, cfg, packaged = {}, opts = null) {
   const site = cfg.siteUrl.replace(/\/$/, "");
-  const org = JSON.stringify({ server: site, ingest: cfg.ingestUrl, apikey: cfg.anonKey, agent_token: cfg.agentToken, allowed_origins: cfg.allowedOrigins || "" });
+  const org = JSON.stringify({ server: site, ingest: cfg.ingestUrl, apikey: cfg.anonKey, agent_token: cfg.agentToken, allowed_origins: cfg.allowedOrigins || "", ...(opts ? { browser_ext: true } : {}) });
+  const X = (opts && opts.ext) || {};                                   // browser extension build: { id, update_url } from <site>/extension/info.json
+  const xid = X.id || "", xurl = X.update_url || (site + "/extension/update.xml");
+  const sfx = opts ? "-with-extension" : "";
   if (os === "windows") {
     const body = packaged.windows
       ? String.raw`set U=${site}/installers/trackobee-setup.exe
@@ -28,7 +31,22 @@ call "%A%\run.bat"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:USERPROFILE '.trackobee\state.json'; for($i=0;$i -lt 45;$i++){ if(Test-Path $p){ try{ $j=Get-Content $p -Raw | ConvertFrom-Json; if($j.last_beat -gt 0){ exit 0 } }catch{} }; Start-Sleep 2 }; exit 1" && (echo OK: Trackobee is installed and reporting.) || (echo WARNING: installed, but no report reached the server yet. Check this computer's internet access, then run this file again.)
 pause
 `;
-    return { name: "trackobee-setup.bat", body: "@echo off\r\nsetlocal\r\nset D=%USERPROFILE%\\.trackobee\r\nmkdir \"%D%\" 2>nul\r\ndel \"%D%\\state.json\" 2>nul\r\n> \"%D%\\org.json\" echo " + org + "\r\n" + (body + verify).replace(/\r?\n/g, "\r\n") };
+    const wext = !opts ? "" : String.raw`
+echo Installing the browser extension (real website domains)...
+set X=%USERPROFILE%\.trackobee\extension
+mkdir "%X%" 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; foreach($f in 'manifest.json','background.js','icon16.png','icon48.png','icon128.png'){ try{ Invoke-WebRequest -UseBasicParsing ('${site}/extension/'+$f) -OutFile (Join-Path $env:USERPROFILE ('.trackobee\extension'+$f)) }catch{} }"
+if not "${xid}"=="" (
+  reg add "HKCU\Software\Policies\Google\Chrome\ExtensionInstallForcelist" /v 77 /t REG_SZ /d "${xid};${xurl}" /f >nul
+  reg add "HKCU\Software\Policies\Microsoft\Edge\ExtensionInstallForcelist" /v 77 /t REG_SZ /d "${xid};${xurl}" /f >nul
+  reg add "HKCU\Software\Policies\BraveSoftware\Brave\ExtensionInstallForcelist" /v 77 /t REG_SZ /d "${xid};${xurl}" /f >nul
+  echo Restart Chrome / Edge, then open chrome://extensions to confirm "Trackobee Browser Sites" is there.
+  echo If it is not: this PC is not managed, so Chrome ignores outside extensions. Open chrome://extensions, turn on Developer mode, click Load unpacked and choose %X%
+) else (
+  echo The extension is not published on the server yet. Open chrome://extensions, turn on Developer mode, click Load unpacked and choose %X%
+)
+`;
+    return { name: "trackobee-setup" + sfx + ".bat", body: "@echo off\r\nsetlocal\r\nset D=%USERPROFILE%\\.trackobee\r\nmkdir \"%D%\" 2>nul\r\ndel \"%D%\\state.json\" 2>nul\r\n> \"%D%\\org.json\" echo " + org + "\r\n" + (body + wext + verify).replace(/\r?\n/g, "\r\n") };
   }
   if (os === "linux") {
     const bin = !!packaged.linux;
@@ -44,7 +62,27 @@ fi`;
     const needPy = "";
     const check = "";
     const execline = `if [ -n "$USEBIN" ]; then EXECLINE=$(printf '"%s"' "$D/agent"); else PY=$(command -v python3); EXECLINE=$(printf '"%s" "%s"' "$PY" "$D/agent.py"); fi`;
-    return { name: "trackobee-setup.sh", body: String.raw`#!/bin/sh
+    const lext = !opts ? "" : String.raw`
+say "[+] installing the browser extension (real website domains)"
+mkdir -p "$D/extension"
+for f in manifest.json background.js icon16.png icon48.png icon128.png; do GET "$SERVER/extension/$f" "$D/extension/$f" || say "  could not download $f"; done
+XID="${xid}"
+if [ -n "$XID" ]; then
+  POL=$(printf '{"ExtensionInstallForcelist":["%s;%s"]}' "$XID" "${xurl}")
+  PUT=""
+  pol_put() { sudo mkdir -p "$1" && printf '%s
+' "$POL" | sudo tee "$1/trackobee.json" >/dev/null && PUT=1; }
+  if [ -z "$(sudo -n true 2>&1)" ] || { [ -t 0 ] && sudo -v 2>/dev/null; }; then
+    command -v google-chrome >/dev/null 2>&1 || command -v google-chrome-stable >/dev/null 2>&1 && pol_put /etc/opt/chrome/policies/managed
+    command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 && { pol_put /etc/chromium/policies/managed; [ -d /var/snap/chromium/current ] && pol_put /var/snap/chromium/current/policies/managed; }
+    command -v microsoft-edge >/dev/null 2>&1 && pol_put /etc/opt/edge/policies/managed
+    command -v brave-browser >/dev/null 2>&1 && pol_put /etc/brave/policies/managed
+  fi
+  if [ -n "$PUT" ]; then say "  Restart the browser, then open chrome://extensions to confirm 'Trackobee Browser Sites' is installed (chrome://policy shows the rule)."
+  else say "  No browser policy could be written (needs sudo, or no supported browser found). Manual: open chrome://extensions, turn on Developer mode, Load unpacked, choose $D/extension"; fi
+else say "  The extension is not published on the server yet. Manual: chrome://extensions, Developer mode, Load unpacked, choose $D/extension"; fi
+`;
+    return { name: "trackobee-setup" + sfx + ".sh", body: String.raw`#!/bin/sh
 # Trackobee agent installer (Linux).   Install or repair:  sh trackobee-setup.sh      Remove:  sh trackobee-setup.sh uninstall
 SERVER="${site}"
 say() { printf '%s\n' "$*"; }
@@ -81,6 +119,7 @@ fi
 printf '{"serial_number":"%s","board_serial":"%s","chassis_serial":"%s","uuid":"%s"}\n' "$(hw_get product_serial)" "$(hw_get board_serial)" "$(hw_get chassis_serial)" "$(hw_get product_uuid)" > "$D/hw.json"
 say "[5/6] starting the agent (and at every login)"
 ${execline}
+${lext}
 pkill -f "$D/agent" 2>/dev/null; sleep 1
 MODE=""
 if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then

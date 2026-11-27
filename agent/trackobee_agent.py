@@ -15,7 +15,7 @@ import base64, collections, configparser, csv, datetime, functools, glob, hashli
 import runpy, sqlite3, ssl, struct, tempfile, textwrap, traceback, uuid, xml.etree.ElementTree, zlib  # noqa: F401
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "4.2"
+VERSION = "4.3"
 
 FROZEN = getattr(sys, "frozen", False)
 OSN = platform.system()
@@ -43,11 +43,12 @@ AGENT_TOKEN = _B.get("agent_token") or os.environ.get("TB_AGENT_TOKEN", "")
 INGEST = _B.get("ingest") or ""          # Supabase RPC URL (tb_ingest_heartbeat); empty => legacy self-hosted server
 APIKEY = _B.get("apikey") or ""          # Supabase anon (public) key
 ALLOWED = [o.strip() for o in (_B.get("allowed_origins") or os.environ.get("TB_ALLOWED_ORIGINS", "")).split(",") if o.strip()]
+BROWSER_EXT = bool(_B.get("browser_ext"))       # set only by the "with browser extension" installer; the standard install ignores the extension
 PORT, INTERVAL = int(os.environ.get("TB_AGENT_PORT", "47821")), int(os.environ.get("TB_AGENT_INTERVAL", "15"))
 CFG = os.path.join(HOME_DIR, "config.json")
 STATE_FILE = os.path.join(HOME_DIR, "state.json")
 S = {"token": None, "user": None, "events": [], "sys": None, "sys_new": False, "loc": None, "loc_new": False,
-     "kwin": False, "restart": False, "ssid": (0, None)}
+     "kwin": False, "restart": False, "ssid": (0, None), "tab": (0, None)}
 L = threading.Lock()
 SRV = None
 
@@ -313,6 +314,13 @@ def foreground_info():
 
 def foreground_app(): return foreground_info()[0]
 
+def browser_site(app):
+    """Domain of the active browser tab, as reported by the Trackobee browser extension (only when it is installed and fresh)."""
+    if not BROWSER_EXT or not app: return None
+    if not any(b in app.lower() for b in _BROWSERS): return None
+    t, dom = S["tab"]
+    return dom if dom and time.time() - t < 70 else None
+
 
 # ------------------------------------------------------------------ telemetry (light, every heartbeat) and inventory (hourly)
 def _ssid():
@@ -491,8 +499,8 @@ def send_beat(host, osu, st, idle, evs, tok, extra=None):
         if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
             base = dict(p_agent_token=AGENT_TOKEN, p_host=host, p_ip=local_ip(), p_os_user=osu, p_state=st, p_idle=int(idle), p_token=tok, p_events=evs)
             full = dict(base, p_app=extra.get("app"), p_telemetry=extra.get("telemetry"), p_sys=extra.get("sys"), p_location=extra.get("location"))
-            nt = dict(full); full = dict(full, p_title=extra.get("title"))
-            for payload in (full, nt, base):
+            nt = dict(full); wt = dict(full, p_title=extra.get("title")); full = dict(wt, p_site=extra.get("site"))
+            for payload in (full, wt, nt, base):
                 rq = urllib.request.Request(INGEST, json.dumps(payload).encode(), {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
                 try:
                     return json.loads(urllib.request.urlopen(rq, timeout=15).read() or b"{}").get("ok") is True
@@ -532,7 +540,7 @@ def beat_loop():
         if last and st != last: event("lock" if st == "locked" else "unlock")
         last = st
         app, title = foreground_info() if st == "active" else (None, None)
-        extra = {"app": app, "title": title, "telemetry": telemetry()}
+        extra = {"app": app, "title": title, "site": browser_site(app), "telemetry": telemetry()}
         with L:
             evs, tok = list(S["events"]), S["token"]
             if S["sys_new"]: extra["sys"] = S["sys"]
@@ -613,6 +621,14 @@ class H(BaseHTTPRequestHandler):
         if self.path == "/status": self._send(200, dict(agent="trackobee", version=VERSION, paired=bool(S["token"]), last_beat=load_state().get("last_beat")))
         else: self._send(404)
     def do_POST(self):
+        if self.path == "/tab":          # from the Trackobee browser extension (a web page cannot forge a chrome-extension:// origin)
+            if not (BROWSER_EXT and self._host_ok() and self.headers.get("Origin", "").startswith(("chrome-extension://", "moz-extension://"))): return self._send(403)
+            try:
+                d = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 2000)) or b"{}")
+                dom = re.sub(r"[^\w.() -]", "", str(d.get("domain") or ""))[:100] if d.get("active") else None
+                S["tab"] = (time.time(), dom or None)
+            except Exception: return self._send(400)
+            return self._send(200, dict(ok=True))
         if not (self._host_ok() and self._origin()): return self._send(403)
         try: d = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
         except Exception: return self._send(400)

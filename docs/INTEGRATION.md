@@ -137,6 +137,29 @@ manufacturer, model, **serial number**, board serial, UUID, BIOS version/date, O
 
 > Tell your employees what is collected. Employee monitoring is regulated in many places (for example GDPR in the EU, DPDP Act in India); a written notice and, where required, consent are your responsibility.
 
+### Browser extension (real websites)
+
+The standard agent shows the application and, for browsers, the page title. To see the real **domain** (for example `mail.google.com`) install the **with extension** build: *Install & API → Download for Windows / Linux + extension*. The standard installer is unchanged and stays lightweight; it never talks to the extension.
+
+How it works: the *Trackobee Browser Sites* extension (Chrome, Edge, Brave, Chromium) sends only the **domain of the active tab** to the agent on the same computer (`http://127.0.0.1:47821/tab`); the agent adds it to its normal heartbeat. Paths, query strings and page content are never read. Private windows are reported only as `(private window)`. A domain counts only while that browser is in front and the user is working (not away or locked).
+
+Installation by the extension build:
+
+| Platform | What the installer does |
+|---|---|
+| Linux | writes a browser policy (needs `sudo` once) for Chrome, Chromium, Edge and Brave that force-installs the extension |
+| Windows | writes the same policy under `HKCU\Software\Policies` for Chrome, Edge and Brave |
+| both | also copies the extension to `~/.trackobee/extension` for a manual *Load unpacked* |
+
+Chrome on a Windows PC that is **not managed** (no domain, no MDM) ignores force-installed extensions from outside the Chrome Web Store. Two fixes: publish the extension (*Publishing* below) or *Load unpacked* by hand on those PCs (chrome://extensions, Developer mode, Load unpacked, choose the folder above). Linux honours the policy without any of that. macOS and Firefox are not covered yet.
+
+Publishing (built by CI from `site/extension/`, served at `<site>/extension/`):
+
+- Self-hosted: add a GitHub secret `EXTENSION_KEY_PEM` (the private key; keep a backup, it fixes the extension id). CI then builds `trackobee.crx`, `update.xml` and `info.json`.
+- Chrome Web Store: upload `<site>/extension/trackobee-extension.zip`, then set the repository variable `CHROME_EXT_STORE_ID` to the store id. Installers then point browsers at the store, which works on unmanaged Windows PCs too.
+
+Dashboard: *Using now* shows `Chrome · domain`, and each employee's dropdown lists **Websites** by time. Database: `tb_hb.site`, read through `tb_site_usage(start, end)`.
+
 ## 6. Website integration
 
 Optional. It links a **website user** to the PC they are using, so the dashboard shows the person's website identity instead of the OS username. Two methods, usable together.

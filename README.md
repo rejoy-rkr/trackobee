@@ -71,3 +71,4 @@ Tell people what is collected (computer name, IPs, OS user, lock/idle state, the
 ## Tests
 SQL: 125 checks (roles, RLS isolation, ingest, report math, owner flow, self-serve claim, events API pairing, retention, offline/online) run against Postgres.
 Edge Functions: 30 + 33 checks under Deno with a fake Supabase client. Live end-to-end and real-browser suites were run against a Supabase project.
+- Optional **browser extension** build (`site/extension/`): reports only the *domain* of the active tab to the local agent; see docs section "Browser extension". The standard installer does not include it.

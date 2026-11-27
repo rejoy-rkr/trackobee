@@ -64,6 +64,9 @@
       return ok(await sb.rpc("tb_work_summary", { p_start: a, p_end: b, p_tz: tz })).map(r => ({ day: r.day, user: r.usr, hosts: r.hosts || [], worked: r.worked, away: r.away, locked: r.locked, first: r.first_ts, last: r.last_ts })); }
     if (p === "/api/apps") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       return ok(await sb.rpc("tb_app_usage", { p_start: a, p_end: b })).map(r => ({ user: r.usr, app: r.app, seconds: r.seconds })); }
+    if (p === "/api/sites") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
+      const r = await sb.rpc("tb_site_usage", { p_start: a, p_end: b }); if (r.error) return [];      // older database: no website data yet
+      return r.data.map(x => ({ user: x.usr, site: x.site, seconds: x.seconds })); }
     if (p === "/api/titles") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       const r = await sb.rpc("tb_title_usage", { p_start: a, p_end: b }); if (r.error) return [];      // older database: no page titles yet
       return r.data.map(x => ({ user: x.usr, app: x.app, title: x.title, seconds: x.seconds })); }
@@ -107,9 +110,10 @@
     fail("unknown route " + path);
   }
 
-  async function downloadInstaller(os) {          // admins and sub-admins; the agent token never touches the page source
+  async function extInfo() { try { const r = await fetch(`${siteUrl()}/extension/info.json`); return r.ok ? await r.json() : null; } catch (e) { return null; } }
+  async function downloadInstaller(os, withExt) {          // admins and sub-admins; the agent token never touches the page source
     const info = ok(await sb.rpc("tb_installer_info")); const { makeInstaller, saveFile } = await import("./installers.js");
-    const r = makeInstaller(os, { siteUrl: siteUrl(), ingestUrl: `${cfg.supabaseUrl}/rest/v1/rpc/tb_ingest_heartbeat`, anonKey: cfg.anonKey, agentToken: info.agent_token, allowedOrigins: info.allowed_origins }, await packaged());
+    const r = makeInstaller(os, { siteUrl: siteUrl(), ingestUrl: `${cfg.supabaseUrl}/rest/v1/rpc/tb_ingest_heartbeat`, anonKey: cfg.anonKey, agentToken: info.agent_token, allowedOrigins: info.allowed_origins }, await packaged(), withExt ? { ext: await extInfo() || {} } : null);
     saveFile(r.name, r.body);
   }
   async function exportCsv(date) {
