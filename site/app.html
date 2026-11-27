@@ -41,19 +41,43 @@ input[type=number]{width:90px}
  <h2>Availability by facility</h2><div class="grid" id="fac"></div>
  <h2>Live: who is on which system</h2>
  <div class="bar"><input id="q" placeholder="Filter user / host / IP / facility"></div>
- <div class="card"><table><thead><tr><th>Website user</th><th>Facility</th><th>Computer</th><th>Public IP</th><th>LAN IP</th><th>OS user</th><th>Status</th><th>Idle</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
- <h2>Daily report</h2>
- <div class="bar"><input type="date" id="d"><button onclick="load()">Load</button><a id="csv" href="#" onclick="TB.exportCsv($('d').value).catch(e=>alert(e.message));return false">Export CSV</a></div>
- <div class="card"><table><thead><tr><th>User</th><th>Facility</th><th>Computer</th><th>IPs</th><th>First in</th><th>Last seen</th><th>Screen on</th><th>Idle</th><th>Locked</th></tr></thead><tbody id="rep"></tbody></table></div>
+ <div class="card"><table><thead><tr><th>Employee</th><th>Facility</th><th>Computer</th><th>Status</th><th>Now using</th><th>Idle</th><th>Battery</th><th>Location</th><th>Public IP</th><th>Last seen</th></tr></thead><tbody id="live"></tbody></table></div>
+ <h2>Today <span class="m" id="todaynote"></span></h2>
+ <p class="m" style="margin-top:0">Worked = screen unlocked and keyboard/mouse used within the last 2 minutes. Away = no activity for more than 2 minutes, or the screen is locked.</p>
+ <div class="card"><table><thead><tr><th>Employee</th><th>Computer</th><th>Worked</th><th>Away</th><th>First seen</th><th>Last seen</th></tr></thead><tbody id="today"></tbody></table></div>
+</section>
+
+<section id="s-rep">
+ <h2>Work report</h2>
+ <div class="bar"><label>From <input type="date" id="rf"></label><label>To <input type="date" id="rt"></label>
+  <button onclick="preset(0)">Today</button><button onclick="preset(1)">Yesterday</button><button onclick="preset(7)">Last 7 days</button><button onclick="preset(30)">Last 30 days</button>
+  <select id="remp" onchange="drawReport()"><option value="">All employees</option></select>
+  <button class="pri" onclick="loadReport()">Load</button><a href="#" onclick="exportReport();return false">Export CSV</a><span class="msg err" id="repmsg"></span></div>
+ <p class="m" id="repnote"></p>
+ <h2>Totals per employee</h2>
+ <div class="card"><table><thead><tr><th>Employee</th><th>Days</th><th>Total worked</th><th>Average / day</th><th>Total away</th></tr></thead><tbody id="rtot"></tbody></table></div>
+ <h2>Per day</h2>
+ <div class="card"><table><thead><tr><th>Date</th><th>Employee</th><th>Computer</th><th>Worked</th><th>Away</th><th>of which locked</th><th>First seen</th><th>Last seen</th></tr></thead><tbody id="rday"></tbody></table></div>
+ <h2>Time spent in applications</h2>
+ <p class="m" style="margin-top:0">Only counted while the employee is working (not away or locked). Application names only; window titles and content are never collected.</p>
+ <div class="card"><table><thead><tr><th>Employee</th><th>Application</th><th>Time</th><th>Share</th></tr></thead><tbody id="rapp"></tbody></table></div>
 </section>
 
 <section id="s-hist">
  <h2>Login / logoff history</h2>
  <p class="m" id="histnote">Every endpoint's session events: sign-in and sign-out of the PC, lock/unlock, going offline/online, and website logins and logouts.</p>
- <div class="bar"><select id="hr" onchange="loadEvents()"><option value="0">Today</option><option value="3" selected>Last 3 days</option><option value="7">Last 7 days</option><option value="14">Last 14 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select>
-  <select id="ht" onchange="drawEvents()"><option value="">All events</option><option value="login,logoff">PC sign-in / sign-out</option><option value="lock,unlock">Lock / unlock</option><option value="online,offline">Online / offline</option><option value="crm_login,crm_logout">Website login / logout</option></select>
-  <input id="hq" placeholder="Filter user / computer / IP" oninput="drawEvents()"><button onclick="loadEvents()">Refresh</button><a href="#" onclick="TB.exportEvents(+$('hr').value).catch(e=>alert(e.message));return false">Export CSV</a><span class="m" id="hcnt"></span></div>
+ <div class="bar"><label>From <input type="date" id="hf"></label><label>To <input type="date" id="ht2"></label>
+  <button onclick="hpreset(0)">Today</button><button onclick="hpreset(1)">Yesterday</button><button onclick="hpreset(7)">Last 7 days</button><button onclick="hpreset(30)">Last 30 days</button></div>
+ <div class="bar"><select id="ht" onchange="drawEvents()"><option value="">All events</option><option value="login,logoff">PC sign-in / sign-out</option><option value="lock,unlock">Lock / unlock</option><option value="online,offline">Online / offline</option><option value="crm_login,crm_logout">Website login / logout</option></select>
+  <input id="hq" placeholder="Filter employee / computer / IP" oninput="drawEvents()"><button class="pri" onclick="loadEvents()">Load</button><a href="#" onclick="TB.exportEvents($('hf').value,$('ht2').value).catch(e=>alert(e.message));return false">Export CSV</a><span class="m" id="hcnt"></span></div>
  <div class="card"><table><thead><tr><th>Time</th><th>Event</th><th>Website user</th><th>OS user</th><th>Computer</th><th>Facility</th><th>Public IP</th><th>Source</th><th>Detail</th></tr></thead><tbody id="ev"></tbody></table></div>
+</section>
+
+<section id="s-dev">
+ <h2>Devices</h2>
+ <p class="m">Everything each agent reports about its computer: serial number, model, OS, hardware, battery, Wi-Fi and approximate location (from the public IP, city level). Click a row for all fields.</p>
+ <div class="bar"><input id="dq" placeholder="Filter by computer / serial / model / user" oninput="drawDevices()"><button onclick="loadDevices()">Refresh</button></div>
+ <div class="card"><table><thead><tr><th>Computer</th><th>Model</th><th>Serial number</th><th>OS</th><th>CPU / RAM</th><th>Battery</th><th>Location</th><th>Wi-Fi</th><th>Agent</th><th>Updated</th></tr></thead><tbody id="dv"></tbody></table></div>
 </section>
 
 <section id="s-fac">
@@ -130,29 +154,61 @@ const api=(...a)=>TB.api(...a);
 let ME,LIVE=[],EVS=[],DEP,ORG,timer;
 function show(id){document.querySelectorAll("main section").forEach(s=>s.classList.toggle("on",s.id=="s-"+id));
  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.id==id));
- if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac();if(id=="hist")loadEvents()}
+ if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac();if(id=="hist")loadEvents();if(id=="rep")loadReport();if(id=="dev")loadDevices()}
 async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner"){location.href="owner.html";return}
  $("org").textContent=ME.org;$("who").textContent=ME.name;$("role").textContent=RL[ME.role];
- const tabs=[["dash","Dashboard"],["hist","History"],["fac","Facilities"]];
- if(ME.role!="read_only")tabs.push(["dep","Integrate"],["set","Settings"]);
- if(ME.role=="admin")tabs.splice(4,0,["usr","Users"]);
+ const tabs=[["dash","Dashboard"],["rep","Reports"],["hist","History"],["dev","Devices"],["fac","Facilities"]];
+ if(ME.role!="read_only")tabs.push(["dep","Integrate"]);
+ if(ME.role=="admin")tabs.push(["usr","Users"]);
+ if(ME.role!="read_only")tabs.push(["set","Settings"]);
  $("nav").innerHTML=tabs.map(([i,n])=>`<button data-id="${i}">${n}</button>`).join("");
  $("nav").onclick=e=>{if(e.target.dataset.id)show(e.target.dataset.id)};
  if(ME.role=="read_only")$("facform").style.display="none";
- $("d").value=new Date().toLocaleDateString("en-CA");$("q").oninput=drawLive;
- show("dash");live();load();timer=setInterval(()=>{if($("s-dash").classList.contains("on"))live()},5000)}
+ setRange("rf","rt",6);setRange("hf","ht2",2);$("q").oninput=drawLive;
+ show("dash");live();loadToday();timer=setInterval(()=>{if($("s-dash").classList.contains("on")){live();loadToday()}},15000)}
+// ---- dates + durations
+const ymd=d=>d.toLocaleDateString("en-CA");
+function setRange(a,b,daysBack){const t=new Date(),f=new Date();f.setDate(f.getDate()-daysBack);$(a).value=ymd(f);$(b).value=ymd(t)}
+function dur(s){s=Math.max(0,Math.round(s));if(s>0&&s<60)return"<1m";const h=Math.floor(s/3600),mi=Math.floor(s%3600/60);return h?`${h}h ${String(mi).padStart(2,"0")}m`:`${mi}m`}
+const hrs=s=>(s/3600).toFixed(2)+" h";
 async function logout(){await TB.signOut();location.href="login.html"}
 // ---- dashboard
 function drawLive(){const q=$("q").value.toLowerCase(),f={};
  LIVE.forEach(r=>{(f[r.facility]??={available:0,away:0,locked:0,offline:0})[r.state]++});
  $("fac").innerHTML=Object.entries(f).sort().map(([n,c])=>`<div class="card fc"><b>${esc(n)}</b><span class="big">${c.available}</span> available<br><small>${c.away} away · ${c.locked} locked · ${c.offline} offline</small></div>`).join("")||'<p class="m">No agents reporting yet. See the Integrate tab.</p>';
- $("live").innerHTML=LIVE.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>`<tr><td>${esc(r.crm_user||"- not linked")}</td><td>${esc(r.facility)}</td><td>${esc(r.host)}</td><td>${esc(r.pub_ip)}</td><td>${esc(r.ip)}</td><td class="${r.mismatch?"warn":""}">${esc(r.os_user)}${r.mismatch?" ⚠":""}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${m(r.idle)}</td><td>${t(r.last_seen)}</td></tr>`).join("")}
+ $("live").innerHTML=LIVE.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>`<tr><td>${esc(r.crm_user||r.os_user)}${r.mismatch?' <span class="warn" title="Website user differs from the OS user">⚠</span>':""}</td><td>${esc(r.facility)}</td><td>${esc(r.host)}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${esc(r.state=="offline"||r.state=="locked"?"":r.app||"")}</td><td>${m(r.idle)}</td><td>${batt(r)}</td><td>${esc(r.location||"")}</td><td>${esc(r.pub_ip)}</td><td>${t(r.last_seen)}</td></tr>`).join("")}
+const batt=r=>r.battery==null?"":`${r.battery}%${r.charging?" ⚡":""}`;
 async function live(){try{LIVE=await api("/api/live");drawLive()}catch(e){}}
-async function load(){const r=await api("/api/report?date="+$("d").value);
- $("rep").innerHTML=r.map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.facility||"Unmapped")}</td><td>${esc(a.host)}</td><td>${esc(a.ips.join(", "))}</td><td>${t(a.first)}</td><td>${t(a.last)}</td><td>${m(a.screen_on)}</td><td>${m(a.idle)}</td><td>${m(a.locked)}</td></tr>`).join("")}
-// ---- login / logoff history
-async function loadEvents(){EVS=await api("/api/events?days="+$("hr").value);drawEvents();
+async function loadToday(){try{const d=ymd(new Date()),r=await api(`/api/work?from=${d}&to=${d}`);
+ $("todaynote").textContent="· "+new Date().toLocaleDateString([], {weekday:"long",day:"numeric",month:"short"});
+ $("today").innerHTML=r.map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.hosts.join(", "))}</td><td><b>${dur(a.worked)}</b></td><td>${dur(a.away+a.locked)}</td><td>${t(a.first)}</td><td>${t(a.last)}</td></tr>`).join("")||'<tr><td class="m">No activity recorded today yet.</td></tr>'}catch(e){}}
+// ---- reports (any date range)
+let WORK=[],APPS=[];
+function preset(n){const t=new Date(),f=new Date();if(n==1){t.setDate(t.getDate()-1);f.setDate(f.getDate()-1)}else f.setDate(f.getDate()-Math.max(0,n-1));$("rf").value=ymd(f);$("rt").value=ymd(t);loadReport()}
+async function loadReport(){$("repmsg").textContent="";try{const f=$("rf").value,tt=$("rt").value;if(!f||!tt||f>tt)throw new Error("Choose a valid date range");
+ [WORK,APPS]=await Promise.all([api(`/api/work?from=${f}&to=${tt}`),api(`/api/apps?from=${f}&to=${tt}`)]);
+ const cur=$("remp").value;$("remp").innerHTML='<option value="">All employees</option>'+[...new Set(WORK.map(w=>w.user))].sort().map(u=>`<option ${u==cur?"selected":""}>${esc(u)}</option>`).join("");
+ drawReport();try{const o=await api("/api/org");$("repnote").textContent=`Activity data is kept for ${o.hb_retention_days} days (Settings → Data retention), so earlier days cannot be reported.`}catch(e){}}catch(e){$("repmsg").textContent=e.message}}
+function drawReport(){const e=$("remp").value,rows=WORK.filter(w=>!e||w.user==e),by={};
+ rows.forEach(w=>{const a=by[w.user]??={days:0,worked:0,away:0};a.days++;a.worked+=w.worked;a.away+=w.away+w.locked});
+ $("rtot").innerHTML=Object.entries(by).sort().map(([u,a])=>`<tr><td>${esc(u)}</td><td>${a.days}</td><td><b>${dur(a.worked)}</b> <span class="m">(${hrs(a.worked)})</span></td><td>${dur(a.worked/a.days)}</td><td>${dur(a.away)}</td></tr>`).join("")||'<tr><td class="m">No data in this range.</td></tr>';
+ $("rday").innerHTML=rows.map(w=>`<tr><td>${esc(w.day)}</td><td>${esc(w.user)}</td><td>${esc(w.hosts.join(", "))}</td><td><b>${dur(w.worked)}</b></td><td>${dur(w.away+w.locked)}</td><td>${dur(w.locked)}</td><td>${t(w.first)}</td><td>${t(w.last)}</td></tr>`).join("")||'<tr><td class="m">No data in this range.</td></tr>';
+ const ap=APPS.filter(a=>!e||a.user==e),tot={};ap.forEach(a=>tot[a.user]=(tot[a.user]||0)+a.seconds);const seen={};
+ $("rapp").innerHTML=ap.filter(a=>(seen[a.user]=(seen[a.user]||0)+1)<=10).map(a=>`<tr><td>${esc(a.user)}</td><td>${esc(a.app)}</td><td>${dur(a.seconds)}</td><td>${Math.round(100*a.seconds/(tot[a.user]||1))}%</td></tr>`).join("")||'<tr><td class="m">No application data yet.</td></tr>'}
+function exportReport(){TB.exportWork($("rf").value,$("rt").value).catch(e=>alert(e.message))}
+// ---- login / logoff history (any date range)
+function hpreset(n){const t=new Date(),f=new Date();if(n==1){t.setDate(t.getDate()-1);f.setDate(f.getDate()-1)}else f.setDate(f.getDate()-Math.max(0,n-1));$("hf").value=ymd(f);$("ht2").value=ymd(t);loadEvents()}
+async function loadEvents(){const f=$("hf").value,tt=$("ht2").value;if(!f||!tt||f>tt){$("hcnt").textContent="Choose a valid date range";return}
+ EVS=await api(`/api/events?from=${f}&to=${tt}`);drawEvents();
  try{const o=await api("/api/org");$("histnote").textContent=`Every endpoint's session events: PC sign-in and sign-out, lock/unlock, offline/online, and website logins and logouts. Kept for ${o.event_retention_days} days.`}catch(e){}}
+// ---- devices
+let DEVS=[];
+async function loadDevices(){DEVS=await api("/api/devices");drawDevices()}
+function drawDevices(){const q=$("dq").value.toLowerCase(),open=window.OPEN||(window.OPEN=new Set());
+ $("dv").innerHTML=DEVS.filter(d=>JSON.stringify(d).toLowerCase().includes(q)).map(d=>{const i=d.info||{},tl=d.telemetry||{},lo=d.location||{};
+  const main=`<tr style="cursor:pointer" data-h="${esc(d.host)}"><td>${esc(d.host)}</td><td>${esc([i.manufacturer,i.model_version||i.model].filter(Boolean).join(" "))}</td><td>${esc(i.serial_number||i.board_serial||"")}</td><td>${esc(i.os||"")}</td><td>${esc([i.cpu,i.ram_gb?i.ram_gb+" GB":i.ram].filter(Boolean).join(" · "))}</td><td>${tl.battery_percent==null?"":tl.battery_percent+"%"+(tl.charging?" ⚡":"")}${i.battery_health_percent?` <span class="m">(health ${i.battery_health_percent}%)</span>`:""}</td><td>${esc([lo.city,lo.country].filter(Boolean).join(", "))}</td><td>${esc(tl.wifi_ssid||"")}</td><td>${esc(d.agent_version||"")}</td><td>${dt(d.updated_at)}</td></tr>`;
+  return main+(open.has(d.host)?`<tr><td colspan="10"><pre style="margin:0;white-space:pre-wrap;font:12px ui-monospace,monospace">${esc(JSON.stringify({info:i,telemetry:tl,location:lo},null,2))}</pre></td></tr>`:"")}).join("")||'<tr><td class="m">No devices yet.</td></tr>';
+ $("dv").onclick=e=>{const r=e.target.closest("tr[data-h]");if(!r)return;const h=r.dataset.h;open.has(h)?open.delete(h):open.add(h);drawDevices()}}
 function drawEvents(){const ty=$("ht").value?$("ht").value.split(","):null,q=$("hq").value.toLowerCase();
  const rows=EVS.filter(e=>(!ty||ty.includes(e.type))&&(!q||JSON.stringify(e).toLowerCase().includes(q)));
  $("hcnt").textContent=rows.length+" event"+(rows.length==1?"":"s");

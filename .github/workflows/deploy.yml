@@ -50,7 +50,7 @@ jobs:
         with: { name: bin-linux, path: dist/trackobee-agent-linux }
 
   pages:
-    needs: [windows, linux]
+    needs: [supabase, windows, linux]      # database first, so the new site never talks to an old schema
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.deploy.outputs.page_url }}" }

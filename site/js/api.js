@@ -45,10 +45,22 @@
     if (p === "/api/live") return ok(await sb.rpc("tb_live_status"));
     if (p === "/api/report") { const [a, b] = dayRange(q.get("date"));
       return ok(await sb.rpc("tb_daily_report", { p_start: a, p_end: b })).map(r => ({ user: r.usr, host: r.host, facility: r.facility, ips: r.ips, first: r.first_ts, last: r.last_ts, screen_on: r.screen_on, idle: r.idle, locked: r.locked })); }
-    if (p === "/api/events") {
-      const days = Number(q.get("days") || 0), now = Math.floor(Date.now() / 1000);
-      const from = days > 0 ? now - days * 86400 : Math.floor(new Date(new Date().toDateString()) / 1000);
-      return ok(await sb.from("tb_ev").select("*").gte("ts", from).order("ts", { ascending: false }).limit(2000)); }
+    if (p === "/api/events") {                                   // ?from=YYYY-MM-DD&to=YYYY-MM-DD (local days) or ?days=N
+      let from, to;
+      if (q.get("from")) { from = dayRange(q.get("from"))[0]; to = dayRange(q.get("to") || q.get("from"))[1]; }
+      else { const days = Number(q.get("days") || 0), now = Math.floor(Date.now() / 1000);
+        from = days > 0 ? now - days * 86400 : Math.floor(new Date(new Date().toDateString()) / 1000); to = now + 60; }
+      const out = [];
+      for (let off = 0; off < 10000; off += 1000) {            // the API returns at most 1000 rows per request
+        const r = ok(await sb.from("tb_ev").select("*").gte("ts", from).lt("ts", to).order("ts", { ascending: false }).range(off, off + 999));
+        out.push(...r); if (r.length < 1000) break; }
+      return out; }
+    if (p === "/api/work") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
+      return ok(await sb.rpc("tb_work_summary", { p_start: a, p_end: b, p_tz: tz })).map(r => ({ day: r.day, user: r.usr, hosts: r.hosts || [], worked: r.worked, away: r.away, locked: r.locked, first: r.first_ts, last: r.last_ts })); }
+    if (p === "/api/apps") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
+      return ok(await sb.rpc("tb_app_usage", { p_start: a, p_end: b })).map(r => ({ user: r.usr, app: r.app, seconds: r.seconds })); }
+    if (p === "/api/devices") return ok(await sb.from("tb_devices").select("*").order("host"));
     if (p === "/api/facilities") {
       if (method === "POST") { const r = await sb.from("tb_facilities").upsert({ org_id: ORG_ID, name: (body.name || "").trim().slice(0, 80), cidr: (body.cidr || "").trim() }, { onConflict: "org_id,cidr" });
         if (r.error) fail(/cidr|inet|network/i.test(r.error.message) ? "invalid IP or CIDR" : r.error.message); }
@@ -95,14 +107,19 @@
     (await import("./installers.js")).saveFile(`trackobee-${date}.csv`, csv);
   }
 
-  async function exportEvents(days) {
-    const rows = await api("/api/events?days=" + (days || 0)); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  async function exportEvents(from, to) {
+    const rows = await api(`/api/events?from=${from}&to=${to}`); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     const csv = ["time,event,website_user,os_user,computer,facility,public_ip,source,detail", ...rows.map(e => [new Date(e.ts * 1000).toISOString(), e.type, e.crm_user, e.os_user, e.host, e.facility, e.pub_ip, e.source, e.detail].map(q).join(","))].join("\n");
-    (await import("./installers.js")).saveFile(`trackobee-events-${new Date().toISOString().slice(0, 10)}.csv`, csv);
+    (await import("./installers.js")).saveFile(`trackobee-events-${from}_to_${to}.csv`, csv);
+  }
+  async function exportWork(from, to) {
+    const rows = await api(`/api/work?from=${from}&to=${to}`); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"'; const h = s => (s / 3600).toFixed(2);
+    const csv = ["date,employee,computers,worked_hours,away_hours,locked_hours,first_seen,last_seen", ...rows.map(r => [r.day, r.user, r.hosts.join(";"), h(r.worked), h(r.away + r.locked), h(r.locked), new Date(r.first * 1000).toLocaleTimeString(), new Date(r.last * 1000).toLocaleTimeString()].map(q).join(","))].join("\n");
+    (await import("./installers.js")).saveFile(`trackobee-work-${from}_to_${to}.csv`, csv);
   }
 
   const TB = {
-    init, api, downloadInstaller, exportCsv, exportEvents, status, siteUrl,
+    init, api, downloadInstaller, exportCsv, exportEvents, exportWork, status, siteUrl,
     publicSettings: async () => { const r = await sb.rpc("tb_public_settings"); return r.error ? { require_approval: false } : r.data; },
     claim: async () => ok(await sb.rpc("tb_claim_workspace")),
     sb: () => sb, cfg: () => cfg,
