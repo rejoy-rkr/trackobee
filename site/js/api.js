@@ -64,6 +64,9 @@
       return ok(await sb.rpc("tb_work_summary", { p_start: a, p_end: b, p_tz: tz })).map(r => ({ day: r.day, user: r.usr, hosts: r.hosts || [], worked: r.worked, away: r.away, locked: r.locked, first: r.first_ts, last: r.last_ts })); }
     if (p === "/api/apps") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       return ok(await sb.rpc("tb_app_usage", { p_start: a, p_end: b })).map(r => ({ user: r.usr, app: r.app, seconds: r.seconds })); }
+    if (p === "/api/titles") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
+      const r = await sb.rpc("tb_title_usage", { p_start: a, p_end: b }); if (r.error) return [];      // older database: no page titles yet
+      return r.data.map(x => ({ user: x.usr, app: x.app, title: x.title, seconds: x.seconds })); }
     if (p === "/api/devices") {                                     // inventory + each computer's current facility
       const [devs, live] = await Promise.all([sb.from("tb_devices").select("*").order("host"), sb.rpc("tb_live_status")]);
       const m = {}; (live.data || []).forEach(r => { m[r.host] = r; });

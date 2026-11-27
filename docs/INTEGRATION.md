@@ -124,7 +124,7 @@ Every 6 hours (first check one minute after start) the agent downloads `<server>
 | host, OS username, LAN IP | public IP is seen by the server |
 | state | `active` or `locked` |
 | idle seconds | seconds since the last keyboard/mouse input |
-| foreground application | the **name** only, e.g. `Chrome`, `Excel` (never window titles or content) |
+| foreground application | the **name**, e.g. `Chrome`, `Excel`. For web browsers only, also the **page title** (e.g. `Inbox - Gmail`), never the URL; titles of other apps are not collected |
 | telemetry | battery percent / charging / status, AC power, uptime, memory use %, free disk, Wi-Fi network, agent version |
 | session events | sign-in, sign-out, lock, unlock (and website login/logout via embed) |
 

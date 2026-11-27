@@ -15,7 +15,7 @@ import base64, collections, configparser, csv, datetime, functools, glob, hashli
 import runpy, sqlite3, ssl, struct, tempfile, textwrap, traceback, uuid, xml.etree.ElementTree, zlib  # noqa: F401
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "4.1"
+VERSION = "4.2"
 
 FROZEN = getattr(sys, "frozen", False)
 OSN = platform.system()
@@ -229,7 +229,7 @@ def state_idle():
 
 
 # ------------------------------------------------------------------ foreground application (name only)
-_KWIN_JS = ('function rep(w){ print("TBAPP|" + (w ? (w.resourceClass || w.caption || "") : "")); }\n'
+_KWIN_JS = ('function rep(w){ print("TBAPP|" + (w ? ((w.resourceClass || "") + "|" + (w.caption || "")) : "|")); }\n'
             'var sig = workspace.windowActivated || workspace.clientActivated;\nif (sig) sig.connect(rep);\n'
             'rep(workspace.activeWindow || workspace.activeClient);\n')
 
@@ -256,18 +256,22 @@ def kwin_setup():
 def _kwin_app():
     if not S["kwin"]: return None
     o = sh(["journalctl", "--user", "-o", "cat", "--no-pager", "-g", "TBAPP[|]", "-n", "1"], 3)
-    return o.split("TBAPP|", 1)[1].strip() if "TBAPP|" in o else None
+    if "TBAPP|" not in o: return None
+    cls, _, cap = o.split("TBAPP|", 1)[1].partition("|")
+    return (cls.strip() or cap.strip() or None), cap.strip()
 
 def _x11_app():
     o = sh(["xprop", "-root", "_NET_ACTIVE_WINDOW"], 2)
     m = re.search(r"(0x[0-9a-fA-F]+)", o)
-    if not m or int(m.group(1), 16) == 0: return None
-    o2 = sh(["xprop", "-id", m.group(1), "_NET_WM_PID", "WM_CLASS"], 2)
+    if not m or int(m.group(1), 16) == 0: return None, ""
+    o2 = sh(["xprop", "-id", m.group(1), "_NET_WM_PID", "WM_CLASS", "_NET_WM_NAME"], 2)
     pid = re.search(r"_NET_WM_PID\(CARDINAL\) = (\d+)", o2)
     name = _read("/proc/%s/comm" % pid.group(1)) if pid else ""
     if not name:
-        cls = re.findall(r'"([^"]+)"', o2); name = cls[-1] if cls else ""
-    return name or None
+        cls = re.findall(r'"([^"]+)"', re.search(r"WM_CLASS\(STRING\) = (.*)", o2).group(1)) if "WM_CLASS(STRING)" in o2 else []
+        name = cls[-1] if cls else ""
+    t = re.search(r'_NET_WM_NAME\(\w+\) = "(.*)"', o2)
+    return (name or None), (t.group(1) if t else "")
 
 def _win_app():
     u, k = ctypes.windll.user32, ctypes.windll.kernel32
@@ -275,26 +279,39 @@ def _win_app():
     k.CloseHandle.argtypes = [ctypes.c_void_p]
     k.QueryFullProcessImageNameW.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_ulong)]
     hwnd = u.GetForegroundWindow()
-    if not hwnd: return None
+    if not hwnd: return None, ""
     pid = ctypes.c_ulong(); u.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
     h = k.OpenProcess(0x1000, False, pid.value)          # PROCESS_QUERY_LIMITED_INFORMATION
-    if not h: return None
+    if not h: return None, ""
     try:
         buf = ctypes.create_unicode_buffer(1024); n = ctypes.c_ulong(1024)
-        return os.path.basename(buf.value) if k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)) else None
+        name = os.path.basename(buf.value) if k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)) else None
+        tb = ctypes.create_unicode_buffer(512); u.GetWindowTextW(ctypes.c_void_p(hwnd), tb, 512)
+        return name, tb.value
     finally: k.CloseHandle(h)
 
 def _mac_app():
     asn = sh(["lsappinfo", "front"], 3)
     m = re.search(r'="([^"]+)"', sh(["lsappinfo", "info", "-only", "name", asn], 3)) if asn else None
-    return m.group(1) if m else None
+    return (m.group(1) if m else None), ""      # macOS window titles need the Accessibility permission, so none are collected there
 
-def foreground_app():
+_BROWSERS = ("chrome", "chromium", "firefox", "msedge", "edge", "brave", "opera", "vivaldi", "safari", "librewolf", "waterfox")
+_BROWSER_TAIL = re.compile(r"\s+[-\u2014\u2013]\s+(Google Chrome|Chromium|Mozilla Firefox|Firefox|Microsoft\u200b? ?Edge|Edge|Brave|Opera|Vivaldi|Safari)(\s+[-\u2014\u2013]\s+.*)?$", re.I)
+
+def foreground_info():
+    """(application, page title). The title is collected for web browsers only (so you see which site, not which document)."""
     try:
-        n = _win_app() if OSN == "Windows" else _mac_app() if OSN == "Darwin" else (_kwin_app() or _x11_app())
-        return _friendly(n)
+        n, t = (_win_app() if OSN == "Windows" else _mac_app() if OSN == "Darwin" else (_kwin_app() or _x11_app() or (None, "")))
+        app = _friendly(n)
+        title = None
+        key = re.sub(r"\.exe$", "", (n or "").lower())
+        if any(b in key or b in (app or "").lower() for b in _BROWSERS):
+            title = _BROWSER_TAIL.sub("", (t or "").strip()).strip()[:150] or None
+        return app, title
     except Exception:
-        return None
+        return None, None
+
+def foreground_app(): return foreground_info()[0]
 
 
 # ------------------------------------------------------------------ telemetry (light, every heartbeat) and inventory (hourly)
@@ -474,12 +491,13 @@ def send_beat(host, osu, st, idle, evs, tok, extra=None):
         if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
             base = dict(p_agent_token=AGENT_TOKEN, p_host=host, p_ip=local_ip(), p_os_user=osu, p_state=st, p_idle=int(idle), p_token=tok, p_events=evs)
             full = dict(base, p_app=extra.get("app"), p_telemetry=extra.get("telemetry"), p_sys=extra.get("sys"), p_location=extra.get("location"))
-            for payload in (full, base):
+            nt = dict(full); full = dict(full, p_title=extra.get("title"))
+            for payload in (full, nt, base):
                 rq = urllib.request.Request(INGEST, json.dumps(payload).encode(), {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
                 try:
                     return json.loads(urllib.request.urlopen(rq, timeout=15).read() or b"{}").get("ok") is True
                 except urllib.error.HTTPError as e:
-                    if payload is full and e.code in (400, 404): continue      # backend not upgraded yet: fall back to the basic heartbeat
+                    if payload is not base and e.code in (400, 404): continue      # backend not upgraded yet: fall back to the basic heartbeat
                     return False
             return False
         body = json.dumps(dict(host=host, ip=local_ip(), os_user=osu, state=st, idle=idle, token=tok, events=evs)).encode()   # legacy Flask server
@@ -513,7 +531,8 @@ def beat_loop():
         st, idle = state_idle()
         if last and st != last: event("lock" if st == "locked" else "unlock")
         last = st
-        extra = {"app": foreground_app() if st == "active" else None, "telemetry": telemetry()}
+        app, title = foreground_info() if st == "active" else (None, None)
+        extra = {"app": app, "title": title, "telemetry": telemetry()}
         with L:
             evs, tok = list(S["events"]), S["token"]
             if S["sys_new"]: extra["sys"] = S["sys"]

@@ -30,7 +30,7 @@ website page (embed.js, optional) ► local agent ─┘            owner/admin 
 - **Devices:** serial number, model, OS, CPU/RAM/disks, MACs, battery health, Wi-Fi, agent version, location. The agent sends this as free-form JSON
   (`tb_devices.info` / `telemetry` / `location`), so new fields need only an agent update, never a migration or a new installer.
 - **Agents update themselves** from `<site>/agent/trackobee_agent.py` (tested, then swapped in and restarted), so installers are one-time.
-- Application tracking records the application **name only** (never window titles, keystrokes, screenshots or content). Location is approximate (public IP, city level).
+- Application tracking records the application **name**, plus the **page title** for web browsers only (never URLs, keystrokes, screenshots or content; no titles for other apps). Location is approximate (public IP, city level).
   Tell your employees what is collected.
 
 ## What is recorded and for how long
