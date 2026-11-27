@@ -32,11 +32,18 @@ pause
   }
   if (os === "linux") {
     const bin = !!packaged.linux;
-    const get = bin ? `GET "${site}/installers/trackobee-agent-linux" "$D/agent" && chmod +x "$D/agent"` : `GET "${site}/agent/trackobee_agent.py" "$D/agent.py"`;
-    const needPy = bin ? "" : `command -v python3 >/dev/null 2>&1 || fail "python3 is required:  sudo apt install python3"`;
-    const check = bin ? `"$D/agent" --selftest 2>/dev/null | grep -q ok || fail "the downloaded agent does not run on this system"`
-                      : `python3 -m py_compile "$D/agent.py" 2>/dev/null || fail "the downloaded agent is damaged or needs a newer python3 (3.7+)"`;
-    const execline = bin ? `EXECLINE=$(printf '"%s"' "$D/agent")` : `PY=$(command -v python3); EXECLINE=$(printf '"%s" "%s"' "$PY" "$D/agent.py")`;
+    const binTry = bin ? `GET "${site}/installers/trackobee-agent-linux" "$D/agent" && chmod +x "$D/agent" && "$D/agent" --selftest 2>/dev/null | grep -q ok && USEBIN=1
+if [ -z "$USEBIN" ]; then rm -f "$D/agent"; say "  (the prebuilt agent does not run on this Linux version - using the python version instead)"; fi` : "";
+    const get = `USEBIN=""
+${binTry}
+if [ -z "$USEBIN" ]; then
+  command -v python3 >/dev/null 2>&1 || fail "python3 is required:  sudo apt install python3"
+  GET "${site}/agent/trackobee_agent.py" "$D/agent.py" || fail "cannot download from $SERVER . This computer must be able to open that address in a browser."
+  python3 -m py_compile "$D/agent.py" 2>/dev/null || fail "the downloaded agent is damaged or needs a newer python3 (3.7+)"
+fi`;
+    const needPy = "";
+    const check = "";
+    const execline = `if [ -n "$USEBIN" ]; then EXECLINE=$(printf '"%s"' "$D/agent"); else PY=$(command -v python3); EXECLINE=$(printf '"%s" "%s"' "$PY" "$D/agent.py"); fi`;
     return { name: "trackobee-setup.sh", body: String.raw`#!/bin/sh
 # Trackobee agent installer (Linux).   Install or repair:  sh trackobee-setup.sh      Remove:  sh trackobee-setup.sh uninstall
 SERVER="${site}"
@@ -63,9 +70,8 @@ elif command -v wget >/dev/null 2>&1; then DL() { wget -q -T 30 "$1" -O "$2"; }
 else fail "curl or wget is required:  sudo apt install curl"; fi
 GET() { n=0; while [ "$n" -lt 4 ]; do DL "$1" "$2.part" && mv "$2.part" "$2" && return 0; n=$((n+1)); sleep 3; done; return 1; }
 say "[2/6] downloading the agent from $SERVER"
-${get} || fail "cannot download from $SERVER . This computer must be able to open that address in a browser."
-say "[3/6] checking the download"
-${check}
+${get}
+say "[3/6] checking the download: ok"
 say "[4/6] reading this computer's hardware identity (serial number; optional)"
 hw_get() { v=$(cat "/sys/class/dmi/id/$1" 2>/dev/null); [ -z "$v" ] && v=$(sudo -n cat "/sys/class/dmi/id/$1" 2>/dev/null); printf '%s' "$v" | tr -cd 'A-Za-z0-9._ -'; }
 if [ -z "$(cat /sys/class/dmi/id/product_serial 2>/dev/null)" ] && [ -t 0 ] && command -v sudo >/dev/null 2>&1; then
