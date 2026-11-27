@@ -80,7 +80,7 @@ jobs:
         env:
           EXT_KEY_PEM: ${{ secrets.EXTENSION_KEY_PEM }}
           CHROME_EXT_STORE_ID: ${{ vars.CHROME_EXT_STORE_ID }}
-        run: python3 packaging/build_extension.py _site "${{ vars.SITE_URL }}"
+        run: python3 packaging/build_extension.py _site "${{ vars.SITE_URL || format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}"
       - uses: actions/upload-pages-artifact@v3
         with: { path: _site }
       - id: deploy
