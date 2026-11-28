@@ -222,7 +222,7 @@ const stamp=id=>{const e=$(id);if(e)e.textContent="Updated "+new Date().toLocale
   const keys=[...m.keys()].sort((a,b)=>gtext(mode,a).localeCompare(gtext(mode,b)));GK[sec]=keys.map(k=>sec+"|"+mode+"|"+k);
   return keys.map(k=>{const gk=sec+"|"+mode+"|"+k,open=OPENG.has(gk),arr=m.get(k);
    return `<tr class="grp" data-gk="${esc(gk)}" data-sec="${sec}"><td colspan="${ncols}"><span class="chev">${open?"▾":"▸"}</span> ${glabel(mode,k)} <span class="m">· ${sumFn(arr)}</span></td></tr>`+(open?arr.map(rowFn).join(""):"")}).join("")},
- canNick=()=>ME.role=="admin"||ME.role=="sub_admin",NEWDAYS=7,nkey=r=>r.serial||"host:"+r.host,NICK=r=>NICKS[nkey(r)]||"",unick=(user,hosts)=>[...new Set((hosts||[]).map(h=>NICKS[HKEY[h]]).filter(Boolean))].join(", "),lbl=(user,nick)=>nick?`${esc(nick)} <span class="m">(${esc(user)})</span>`:esc(user),isNew=ts=>ts&&Date.now()/1000-ts<NEWDAYS*86400,
+ canNick=()=>ME.role=="admin"||ME.role=="sub_admin",NEWSECS=3600,nkey=r=>r.serial||"host:"+r.host,NICK=r=>NICKS[nkey(r)]||"",unick=(user,hosts)=>[...new Set((hosts||[]).map(h=>NICKS[HKEY[h]]).filter(Boolean))].join(", "),lbl=(user,nick)=>nick?`${esc(nick)} <span class="m">(${esc(user)})</span>`:esc(user),isNew=ts=>ts&&Date.now()/1000-ts<NEWSECS,
  newTag=(ts,what)=>isNew(ts)?`<span class="newtag" title="${what} added ${esc(dt(ts))}">New</span>`:"",
  ukey=r=>r.crm_user||r.os_user,batt=r=>r.battery==null?"":`${r.battery}%${r.charging?" ⚡":""}`;
 function cells(r,k){const u=ukey(r),w=TODAY[u],gone=r.state=="offline"||r.state=="locked";
