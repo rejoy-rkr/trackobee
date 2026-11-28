@@ -21,8 +21,8 @@ jobs:
         with: { version: latest }
       - run: supabase link --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
       - run: supabase db push --linked --yes
-      - run: supabase functions deploy tb-manage-users --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
-      - run: supabase functions deploy tb-events --no-verify-jwt --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+      - run: supabase functions deploy tb-manage-users --yes --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+      - run: supabase functions deploy tb-events --no-verify-jwt --yes --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
 
   windows:
     runs-on: windows-latest
