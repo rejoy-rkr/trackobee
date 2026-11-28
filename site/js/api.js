@@ -91,6 +91,13 @@
       return ok(devs).map(d => ({ ...d, fac: m[d.host] ? m[d.host].facility : undefined, fac_src: m[d.host] ? m[d.host].facility_source : undefined })); }
     if (p === "/api/device/facility" && method === "POST") { ok(await sb.rpc("tb_set_device_facility", { p_host: body.host, p_facility: body.facility })); return { ok: true }; }
     if (p === "/api/device/force-update" && method === "POST") { const n = ok(await sb.rpc("tb_force_update", { p_host: body.host || null })); return { ok: true, n }; }
+    if (p === "/api/restricted") {
+      if (method === "POST") { const list = (body.domains || [body.domain]).filter(Boolean).map(d => ({ org_id: ORG_ID, domain: String(d).trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "") })).filter(x => x.domain);
+        const r = await sb.from("tb_restricted_sites").upsert(list, { onConflict: "org_id,domain" }); if (r.error) fail(r.error.message); }
+      if (method === "DELETE") ok(await sb.from("tb_restricted_sites").delete().eq("id", Number(q.get("id"))));
+      return ok(await sb.from("tb_restricted_sites").select("id,domain,created_at").order("domain")); }
+    if (p === "/api/restricted/hits") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
+      return ok(await sb.rpc("tb_restricted_hits", { p_start: a, p_end: b })).map(x => ({ user: x.usr, host: x.host, site: x.site, hits: x.hits, last: x.last_ts, matched: x.matched })); }
     if (p === "/api/facilities") {
       if (method === "POST") { const list = (body.cidrs || [body.cidr]).filter(Boolean).map(c => ({ org_id: ORG_ID, name: (body.name || "").trim().slice(0, 80), cidr: String(c).trim() }));
         const r = await sb.from("tb_facilities").upsert(list, { onConflict: "org_id,cidr" });

@@ -21,6 +21,8 @@ th{color:var(--mut);font-weight:600;font-size:12px}
 .grp td{background:var(--line);cursor:pointer;font-weight:600;user-select:none}.grp:hover td{filter:brightness(.97)}.gctl a{font-size:12px;margin-left:8px}
 .newtag{background:#e8f5e9;color:#1b5e20;border:1px solid #a5d6a7;border-radius:10px;padding:0 7px;font-size:11px;font-weight:600;margin-left:6px}
 @media (prefers-color-scheme:dark){.newtag{background:#1b3a1f;color:#a5d6a7;border-color:#2e5b33}}
+.restrtag{background:#fdecea;color:#a51b1b;border:1px solid #f3b6b0;border-radius:10px;padding:0 7px;font-size:11px;font-weight:600;margin-left:6px}
+@media (prefers-color-scheme:dark){.restrtag{background:#3a1b1b;color:#f3b6b0;border-color:#5b2e2e}}
 .bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 input,button,select,textarea{padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);font:inherit}
 button{cursor:pointer}button.pri{background:var(--ac);border-color:var(--ac);color:#111;font-weight:600}
@@ -37,7 +39,7 @@ input[type=number]{width:90px}
 .sub{margin:14px 0 6px;font-size:13px;font-weight:600}.det table{font-size:13px}.det .card{background:var(--card)}.info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 18px;margin-bottom:6px}.info div{white-space:normal}.info small{color:var(--mut);display:block;font-size:11px}
 </style></head><body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="js/api.js?v=20261206a"></script>
+<script src="js/api.js?v=20261207a"></script>
 
 <header><h1>Track<span>obee</span></h1><b id="org"></b><span class="sp"></span><span id="who" class="m"></span><span id="role" class="b role"></span>
 <a href="docs.html" target="_blank" class="m">Docs</a><button onclick="logout()">Sign out</button></header>
@@ -76,6 +78,9 @@ input[type=number]{width:90px}
  <div class="card"><table><thead><tr><th>Employee</th><th>Serial no.</th><th>Website</th><th>Time</th><th>Share</th></tr></thead><tbody id="asite"></tbody></table></div>
  <h2>Pages (browser page titles)</h2>
  <div class="card"><table><thead><tr><th>Employee</th><th>Serial no.</th><th>Page</th><th>Time</th><th>Share</th></tr></thead><tbody id="atitle"></tbody></table></div>
+ <h2>Restricted sites</h2>
+ <p class="m" style="margin:2px 0 8px">From the content filter (Settings → Content filter) plus the always-on WhatsApp check.</p>
+ <div class="card"><table><thead><tr><th>Employee</th><th>Computer</th><th>Site</th><th>Visits</th><th>Last seen</th><th>Why flagged</th></tr></thead><tbody id="arestr"></tbody></table></div>
 </section>
 
 <section id="s-rep">
@@ -166,6 +171,12 @@ input[type=number]{width:90px}
     <label>Activity data (reports) <input type="number" id="ret_h" min="3" max="90"> days</label>
     <button class="pri" onclick="saveRet()">Save</button><span class="msg" id="rmsg"></span></div></div>
  </div>
+ <h2>Content filter</h2>
+ <div class="card pad">
+  <p class="m" style="margin-top:0">Report who visits these sites (nothing is blocked — this is reporting only). Add a domain or a keyword, e.g. <code>facebook.com</code> or <code>gambling</code>; it matches anywhere in the site's domain or the page title the agent already records. <b>WhatsApp</b> (regular or Business) is always reported, even without adding it here.</p>
+  <div id="rsform" class="bar"><input id="rsnew" placeholder="facebook.com" style="min-width:220px" onkeydown="if(event.key=='Enter')addRestricted()"><button class="pri" onclick="addRestricted()">Add</button><span class="msg" id="rsmsg"></span></div>
+  <table><thead><tr><th>Domain / keyword</th><th>Added</th><th></th></tr></thead><tbody id="rslist"></tbody></table>
+ </div>
  <div id="secrets">
   <h2>Keys (admin only)</h2>
   <div class="card pad row">
@@ -187,7 +198,7 @@ const api=(...a)=>TB.api(...a);
 let ME,LIVE=[],DEP,ORG,timer,TODAY={},tick=0,PEOPLE={},NICKS={},HKEY={},HSER={},CHK={};const OPENU=new Set(),MAIN={},DETR={};let FACS=[];
 function show(id){document.querySelectorAll("main section").forEach(s=>s.classList.toggle("on",s.id=="s-"+id));
  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.id==id));
- if(id=="ev")loadEvents();if(id=="act")loadActivity();if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set")loadOrg();if(id=="fac")loadFac();if(id=="rep")loadReport();if(id=="dev")loadDevices()}
+ if(id=="ev")loadEvents();if(id=="act")loadActivity();if(id=="dep")loadDeploy();if(id=="usr")loadUsers();if(id=="set"){loadOrg();loadRestricted()}if(id=="fac")loadFac();if(id=="rep")loadReport();if(id=="dev")loadDevices()}
 async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner"){location.href="owner.html";return}
  $("org").textContent=ME.org;$("who").textContent=ME.name;$("role").textContent=RL[ME.role];
  const tabs=[["dash","Dashboard"],["ev","Events"],["act","Activity"],["rep","Reports"],["dev","Devices"],["fac","Facilities"]];
@@ -213,10 +224,11 @@ const stamp=id=>{const e=$(id);if(e)e.textContent="Updated "+new Date().toLocale
  hostNick=h=>NICKS[HKEY[h]]||"",
  qmatch=(q,user,hosts)=>{const toks=(q||"").toLowerCase().split(/\s+/).filter(Boolean);if(!toks.length)return true;
   const hay=[user,...[].concat(hosts||[]).flatMap(h=>[h,HSER[h]||"",hostNick(h)])].join(" ").toLowerCase();return toks.every(x=>hay.includes(x))},
- HFAC={},GRPR={},OPENG=new Set(),GFN={},GK={},idx=()=>LIVE.forEach(r=>{HKEY[r.host]=nkey(r);HSER[r.host]=r.serial||"";HFAC[r.host]=r.facility||"Unmapped"}),
+ HFAC={},GRPR={},OPENG=new Set(),GFN={},GK={},idx=()=>LIVE.forEach(r=>{HKEY[r.host]=nkey(r);HSER[r.host]=r.serial||"";HFAC[r.host]=r.facility||"Unmapped";const u=r.crm_user||r.os_user;(UH[u]??=new Set()).add(r.host)}),
+ ulabel=u=>unick(u,[...(UH[u]||[])]),usortkey=u=>(ulabel(u)||u).toLowerCase(),
  gkey=(mode,x)=>mode=="device"?x.host:mode=="employee"?x.user:(x.fac||HFAC[x.host]||"Unmapped"),
- gtext=(mode,k)=>mode=="device"?(hostNick(k)||HSER[k]||k):k,
- glabel=(mode,k)=>mode=="device"?`${esc(hostNick(k)||k)} <span class="m">${esc([HSER[k],k].filter((v,i,a)=>v&&a.indexOf(v)==i&&v!=(hostNick(k)||k)).join(" · "))}</span>`:esc(k),
+ gtext=(mode,k)=>mode=="device"?(hostNick(k)||HSER[k]||k):mode=="employee"?(ulabel(k)||k):k,
+ glabel=(mode,k)=>mode=="device"?`${esc(hostNick(k)||k)} <span class="m">${esc([HSER[k],k].filter((v,i,a)=>v&&a.indexOf(v)==i&&v!=(hostNick(k)||k)).join(" · "))}</span>`:mode=="employee"?lbl(k,ulabel(k)):esc(k),
  grouped=(sec,items,mode,ncols,rowFn,sumFn)=>{if(mode=="none"||!mode){GK[sec]=[];return items.map(rowFn).join("")}
   const m=new Map();items.forEach(x=>{const k=gkey(mode,x);(m.get(k)||m.set(k,[]).get(k)).push(x)});
   const keys=[...m.keys()].sort((a,b)=>gtext(mode,a).localeCompare(gtext(mode,b)));GK[sec]=keys.map(k=>sec+"|"+mode+"|"+k);
@@ -225,8 +237,8 @@ const stamp=id=>{const e=$(id);if(e)e.textContent="Updated "+new Date().toLocale
  canNick=()=>ME.role=="admin"||ME.role=="sub_admin",NEWSECS=3600,nkey=r=>r.serial||"host:"+r.host,NICK=r=>NICKS[nkey(r)]||"",unick=(user,hosts)=>[...new Set((hosts||[]).map(h=>NICKS[HKEY[h]]).filter(Boolean))].join(", "),lbl=(user,nick)=>nick?`${esc(nick)} <span class="m">(${esc(user)})</span>`:esc(user),isNew=ts=>ts&&Date.now()/1000-ts<NEWSECS,
  newTag=(ts,what)=>isNew(ts)?`<span class="newtag" title="${what} added ${esc(dt(ts))}">New</span>`:"",
  ukey=r=>r.crm_user||r.os_user,batt=r=>r.battery==null?"":`${r.battery}%${r.charging?" ⚡":""}`;
-function cells(r,k){const u=ukey(r),w=TODAY[u],gone=r.state=="offline"||r.state=="locked";
- return `<td><span class="chev">▸</span>${lbl(u,NICK(r))}${newTag(PEOPLE[u]&&PEOPLE[u].first,"Employee")}${r.crm_user&&r.os_user&&r.crm_user.toLowerCase()!=r.os_user.toLowerCase()?` <span class="m" title="Account name on the PC (the person is identified by their sign-in)">· PC: ${esc(r.os_user)}</span>`:""}</td><td>${canNick()?`<input class="nick" maxlength="80" placeholder="add nickname" value="${esc(NICK(r))}" style="width:130px" data-k="${esc(nkey(r))}">`:esc(NICK(r))}</td><td>${esc(r.facility)}${r.facility_source=="manual"?' <span class="m" title="Set by hand">✎</span>':""}</td><td>${esc(r.host)}</td><td>${esc(r.serial||"")}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${esc(gone?"":r.app||"")}${!gone&&(r.site||r.title)?` <span class="m" title="${esc(r.title||"")}">· ${esc(r.site||(r.title.length>40?r.title.slice(0,40)+"…":r.title))}</span>`:""}</td><td>${CHK[r.host+"|"+u]?t(CHK[r.host+"|"+u]):"–"}</td><td>${w?`<b>${dur(w.worked)}</b>`:"–"}</td><td>${w?dur(w.away+w.locked):"–"}</td><td>${batt(r)}</td><td>${t(r.last_seen)}</td>`}
+function cells(r,k){const u=ukey(r),w=TODAY[u],gone=r.state=="offline"||r.state=="locked",rh=RHITS[u];
+ return `<td><span class="chev">▸</span>${lbl(u,NICK(r))}${newTag(PEOPLE[u]&&PEOPLE[u].first,"Employee")}${rh?` <span class="restrtag" title="Visited a restricted site today: ${esc([...rh.sites].join(", "))} (last ${t(rh.last)})">${rh.wa?"WhatsApp":"Restricted"}</span>`:""}${r.crm_user&&r.os_user&&r.crm_user.toLowerCase()!=r.os_user.toLowerCase()?` <span class="m" title="Account name on the PC (the person is identified by their sign-in)">· PC: ${esc(r.os_user)}</span>`:""}</td><td>${canNick()?`<input class="nick" maxlength="80" placeholder="add nickname" value="${esc(NICK(r))}" style="width:130px" data-k="${esc(nkey(r))}">`:esc(NICK(r))}</td><td>${esc(r.facility)}${r.facility_source=="manual"?' <span class="m" title="Set by hand">✎</span>':""}</td><td>${esc(r.host)}</td><td>${esc(r.serial||"")}</td><td><span class="b ${r.state}">${LBL[r.state]}</span></td><td>${esc(gone?"":r.app||"")}${!gone&&(r.site||r.title)?` <span class="m" title="${esc(r.title||"")}">· ${esc(r.site||(r.title.length>40?r.title.slice(0,40)+"…":r.title))}</span>`:""}</td><td>${CHK[r.host+"|"+u]?t(CHK[r.host+"|"+u]):"–"}</td><td>${w?`<b>${dur(w.worked)}</b>`:"–"}</td><td>${w?dur(w.away+w.locked):"–"}</td><td>${batt(r)}</td><td>${t(r.last_seen)}</td>`}
 function drawLive(){
  const c={available:0,away:0,locked:0,offline:0};LIVE.forEach(r=>c[r.state]++);
  $("tiles").innerHTML=[["Available",c.available],["Away",c.away],["Locked",c.locked],["Offline",c.offline]].map(([n,v])=>`<div class="card tile"><b>${v}</b><span>${n}</span></div>`).join("");
@@ -235,8 +247,9 @@ function drawLive(){
  const q=$("q").value.toLowerCase().trim(),qf=$("qf").value,qs=$("qs").value,tb=$("live"),want=[];
  const shown=LIVE.filter(r=>(!qf||r.facility==qf)&&(!qs||r.state==qs)&&(!q||[NICK(r),ukey(r),r.os_user,r.crm_user,r.host,r.serial,r.facility,r.app,r.site,r.title,r.ip,r.pub_ip,r.location,r.model,LBL[r.state]].join(" ").toLowerCase().includes(q)));
  $("qcount").textContent=shown.length==LIVE.length?"":`${shown.length} of ${LIVE.length}`;
- const gm=$("qg").value,cnt={};
- if(gm=="facility"){shown.sort((a,b)=>(a.facility||"").localeCompare(b.facility||"")||ukey(a).localeCompare(ukey(b)));shown.forEach(r=>{const c=cnt[r.facility]??={n:0,available:0,away:0,locked:0,offline:0};c.n++;c[r.state]++});GK.qg=Object.keys(cnt).map(f=>"qg|facility|"+f)}else GK.qg=[];
+ const gm=$("qg").value,cnt={},nickHit=r=>q&&NICK(r)&&NICK(r).toLowerCase().includes(q)?0:1;
+ if(gm=="facility"){shown.sort((a,b)=>(a.facility||"").localeCompare(b.facility||"")||nickHit(a)-nickHit(b)||usortkey(ukey(a)).localeCompare(usortkey(ukey(b))));shown.forEach(r=>{const c=cnt[r.facility]??={n:0,available:0,away:0,locked:0,offline:0};c.n++;c[r.state]++});GK.qg=Object.keys(cnt).map(f=>"qg|facility|"+f)}
+ else if(q){shown.sort((a,b)=>nickHit(a)-nickHit(b));GK.qg=[]}else GK.qg=[];
  let lastG,gOpen=true;
  shown.forEach(r=>{
   if(gm=="facility"&&r.facility!==lastG){lastG=r.facility;const gk="qg|facility|"+lastG,c=cnt[lastG];gOpen=OPENG.has(gk);let g=GRPR[gk];if(!g){g=GRPR[gk]=document.createElement("tr");g.className="grp";g.dataset.sec="qg"}g.dataset.gk=gk;
@@ -248,8 +261,11 @@ function drawLive(){
  if(!LIVE.length&&!want.length)tb.innerHTML="";
  want.forEach((el,i)=>{if(tb.children[i]!==el)tb.insertBefore(el,tb.children[i]||null)});
  while(tb.children.length>want.length)tb.lastElementChild.remove()}
+let RHITS={};
 async function live(){try{LIVE=await api("/api/live");
- if(tick++%3==0){const d=ymd(new Date()),w=await api(`/api/work?from=${d}&to=${d}`);TODAY={};w.forEach(x=>TODAY[x.user]=x);[PEOPLE,NICKS]=await Promise.all([api("/api/people"),api("/api/nicks")]);CHK={};(await api(`/api/checkins?from=${d}&to=${d}`)).forEach(x=>{const k=x.host+"|"+x.user;if(!CHK[k]||x.checkin<CHK[k])CHK[k]=x.checkin})}idx();drawLive();stamp("dupd")}catch(e){}}
+ if(tick++%3==0){const d=ymd(new Date()),w=await api(`/api/work?from=${d}&to=${d}`);TODAY={};w.forEach(x=>TODAY[x.user]=x);[PEOPLE,NICKS]=await Promise.all([api("/api/people"),api("/api/nicks")]);CHK={};(await api(`/api/checkins?from=${d}&to=${d}`)).forEach(x=>{const k=x.host+"|"+x.user;if(!CHK[k]||x.checkin<CHK[k])CHK[k]=x.checkin});
+  RHITS={};(await api(`/api/restricted/hits?from=${d}&to=${d}`).catch(()=>[])).forEach(x=>{const c=RHITS[x.user]??={sites:new Set(),last:0,wa:false};c.sites.add(x.site);c.last=Math.max(c.last,x.last);if(x.matched.includes("whatsapp"))c.wa=true})}
+ idx();drawLive();stamp("dupd")}catch(e){}}
 async function saveNick(key,val){try{await api("/api/nicks","POST",{key,name:val.trim()});NICKS=await api("/api/nicks");drawLive()}catch(er){alert(er.message)}}
 $("live").addEventListener("change",e=>{const i=e.target.closest("input.nick");if(i)saveNick(i.dataset.k,i.value)});
 $("live").addEventListener("keydown",e=>{if(e.target.matches&&e.target.matches("input.nick")&&e.key=="Enter")e.target.blur()});
@@ -324,14 +340,17 @@ let ACT=[];
 function drawActivity(){const q=$("aq").value,rows=ACT.filter(x=>x.seconds>=15&&qmatch(q,x.user,x.host)),SEP="\u0001";
  const block=(id,field,limit,empty)=>{const m=new Map(),tot={};
   rows.forEach(x=>{const v=x[field];if(!v)return;const k=x.user+SEP+x.host+SEP+v;m.set(k,(m.get(k)||0)+x.seconds);const g=x.user+SEP+x.host;tot[g]=(tot[g]||0)+x.seconds});
-  const seen={};const out=[...m.entries()].map(([k,sec])=>{const[u,h,v]=k.split(SEP);return{user:u,host:h,v,sec}}).sort((a,b)=>(a.user+a.host).localeCompare(b.user+b.host)||b.sec-a.sec)
+  const seen={};const out=[...m.entries()].map(([k,sec])=>{const[u,h,v]=k.split(SEP);return{user:u,host:h,v,sec}}).sort((a,b)=>(usortkey(a.user)+a.host).localeCompare(usortkey(b.user)+b.host)||b.sec-a.sec)
    .filter(r=>(seen[r.user+r.host]=(seen[r.user+r.host]||0)+1)<=limit&&r.sec>=30);
   $(id).innerHTML=grouped("ag_"+field,out,$("ag").value,5,r=>`<tr><td>${lbl(r.user,hostNick(r.host))}</td><td>${esc(HSER[r.host]||r.host)}</td><td>${esc(r.v)}</td><td>${dur(r.sec)}</td><td>${Math.round(100*r.sec/(tot[r.user+SEP+r.host]||1))}%</td></tr>`,a=>dur(a.reduce((t,x)=>t+x.sec,0)))||`<tr><td class="m">${empty}</td></tr>`};
- block("aapp","app",10,"No application data in this range.");block("asite","site",10,"No website data. Install the agent with the browser extension to see domains.");block("atitle","title",10,"No page titles in this range.")}
+ block("aapp","app",10,"No application data in this range.");block("asite","site",10,"No website data. Install the agent with the browser extension to see domains.");block("atitle","title",10,"No page titles in this range.");
+ $("arestr").innerHTML=RHITS_RANGE.map(x=>`<tr><td>${lbl(x.user,unick(x.user,[...(UH[x.user]||[])]))}</td><td>${esc(hostNick(x.host)||x.host)}</td><td>${esc(x.site)}</td><td>${x.hits}</td><td>${dt(x.last)}</td><td>${esc(x.matched)}</td></tr>`).join("")||'<tr><td colspan="6" class="m">No restricted site visits in this range.</td></tr>'}
+let RHITS_RANGE=[];
 async function loadActivity(){const f=$("af").value,t2=$("at").value;if(!f||!t2||f>t2){alert("Choose a valid date range");return}
- for(const id of ["aapp","asite","atitle"])$(id).innerHTML='<tr><td class="m">Loading…</td></tr>';
+ for(const id of ["aapp","asite","atitle","arestr"])$(id).innerHTML='<tr><td class="m">Loading…</td></tr>';
  try{if(!LIVE.length){LIVE=await api("/api/live").catch(()=>[]);idx()}try{NICKS=await api("/api/nicks")}catch(e){}
-  ACT=await api(`/api/activity?from=${f}&to=${t2}`);drawActivity();stamp("aupd")}catch(e){$("aapp").innerHTML=`<tr><td class="err">${esc(e.message)}</td></tr>`}}
+  [ACT,RHITS_RANGE]=await Promise.all([api(`/api/activity?from=${f}&to=${t2}`),api(`/api/restricted/hits?from=${f}&to=${t2}`).catch(()=>[])]);
+  drawActivity();stamp("aupd")}catch(e){$("aapp").innerHTML=`<tr><td class="err">${esc(e.message)}</td></tr>`}}
 function initSections(){
  const GM=[["device","Group: by computer"],["employee","Group: by employee"],["facility","Group: by facility"],["none","No grouping"]];
  $("evg-w").innerHTML=gsel("evg",GM,"device");$("ag-w").innerHTML=gsel("ag",GM,"device");$("rg-w").innerHTML=gsel("rg",GM,"employee");
@@ -350,19 +369,19 @@ async function loadReport(){$("repmsg").textContent="";try{const f=$("rf").value
  if(!LIVE.length)LIVE=await api("/api/live").catch(()=>[]);idx();
  let CKL;[WORK,APPS,NICKS,CKL]=await Promise.all([api(`/api/work?from=${f}&to=${tt}`),api(`/api/apps?from=${f}&to=${tt}`),api("/api/nicks"),api(`/api/checkins?from=${f}&to=${tt}`)]);
  CK={};CKL.forEach(x=>{const k=x.day+"|"+x.user,c=CK[k];if(!c)CK[k]={in:x.checkin,out:x.lastwork};else{c.in=Math.min(c.in,x.checkin);c.out=Math.max(c.out,x.lastwork)}});UH={};WORK.forEach(w=>{(UH[w.user]??=new Set());w.hosts.forEach(h=>UH[w.user].add(h))});
- const cur=$("remp").value;$("remp").innerHTML='<option value="">All employees</option>'+[...new Set(WORK.map(w=>w.user))].sort().map(u=>{const n=unick(u,[...(UH[u]||[])]);return `<option value="${esc(u)}" ${u==cur?"selected":""}>${esc(n?n+" ("+u+")":u)}</option>`}).join("");
+ const cur=$("remp").value;$("remp").innerHTML='<option value="">All employees</option>'+[...new Set(WORK.map(w=>w.user))].sort((a,b)=>usortkey(a).localeCompare(usortkey(b))).map(u=>{const n=unick(u,[...(UH[u]||[])]);return `<option value="${esc(u)}" ${u==cur?"selected":""}>${esc(n?n+" ("+u+")":u)}</option>`}).join("");
  drawReport();try{const o=await api("/api/org");$("repnote").textContent=`Activity data is kept for ${o.hb_retention_days} days (Settings → Data retention), so earlier days cannot be reported.`}catch(e){}}catch(e){$("repmsg").textContent=e.message}}
 function drawReport(){const e=$("remp").value,rq=$("rq").value,rows=WORK.filter(w=>(!e||w.user==e)&&qmatch(rq,w.user,w.hosts)),by={},okU=new Set(rows.map(w=>w.user));stamp("rupd");
  rows.forEach(w=>{const a=by[w.user]??={days:0,worked:0,away:0};a.days++;a.worked+=w.worked;a.away+=w.away+w.locked});
- $("rtot").innerHTML=Object.entries(by).sort().map(([u,a])=>`<tr><td>${rlbl(u)}</td><td>${a.days}</td><td><b>${dur(a.worked)}</b> <span class="m">(${hrs(a.worked)})</span></td><td>${dur(a.worked/a.days)}</td><td>${dur(a.away)}</td></tr>`).join("")||'<tr><td class="m">No data in this range.</td></tr>';
+ $("rtot").innerHTML=Object.entries(by).sort((a,b)=>usortkey(a[0]).localeCompare(usortkey(b[0]))).map(([u,a])=>`<tr><td>${rlbl(u)}</td><td>${a.days}</td><td><b>${dur(a.worked)}</b> <span class="m">(${hrs(a.worked)})</span></td><td>${dur(a.worked/a.days)}</td><td>${dur(a.away)}</td></tr>`).join("")||'<tr><td class="m">No data in this range.</td></tr>';
  $("rday").innerHTML=grouped("rg",rows.map(w=>({...w,host:w.hosts[0]})),$("rg").value,8,w=>`<tr><td>${esc(w.day)}</td><td>${lbl(w.user,unick(w.user,w.hosts))}</td><td>${esc(w.hosts.join(", "))}</td><td><b>${dur(w.worked)}</b></td><td>${dur(w.away+w.locked)}</td><td>${dur(w.locked)}</td><td>${(CK[w.day+"|"+w.user]||{}).in?t(CK[w.day+"|"+w.user].in):"–"}</td><td>${(CK[w.day+"|"+w.user]||{}).out?t(CK[w.day+"|"+w.user].out):"–"}</td></tr>`,a=>`${dur(a.reduce((t,x)=>t+x.worked,0))} worked · ${a.length} day${a.length==1?"":"s"}`)||'<tr><td class="m">No data in this range.</td></tr>';
  const ap=APPS.filter(a=>(!e||a.user==e)&&okU.has(a.user)&&a.seconds>=30),tot={};ap.forEach(a=>tot[a.user]=(tot[a.user]||0)+a.seconds);const seen={};
  $("rapp").innerHTML=ap.filter(a=>(seen[a.user]=(seen[a.user]||0)+1)<=10).map(a=>`<tr><td>${rlbl(a.user)}</td><td>${esc(a.app)}</td><td>${dur(a.seconds)}</td><td>${Math.round(100*a.seconds/(tot[a.user]||1))}%</td></tr>`).join("")||'<tr><td class="m">No application data yet.</td></tr>'}
 function exportReport(){TB.exportWork($("rf").value,$("rt").value).catch(e=>alert(e.message))}
 // ---- devices (search any attribute)
 let DEVS=[];
-async function loadDevices(){DEVS=await api("/api/devices");try{FACS=await api("/api/facilities")}catch(e){}drawDevices();stamp("devupd")}
-function flat(d){const o={computer:d.host,host:d.host,facility:d.fac||"",serial:(d.info||{}).serial_number||"",agent_version:d.agent_version||"",updated:dt(d.updated_at)};
+async function loadDevices(){DEVS=await api("/api/devices");try{[FACS,NICKS]=await Promise.all([api("/api/facilities"),api("/api/nicks")])}catch(e){}drawDevices();stamp("devupd")}
+function flat(d){const o={computer:d.host,host:d.host,facility:d.fac||"",serial:(d.info||{}).serial_number||"",nickname:NICKS[(d.info||{}).serial_number||"host:"+d.host]||"",agent_version:d.agent_version||"",updated:dt(d.updated_at)};
  const add=(src,pre)=>Object.entries(src||{}).forEach(([k,v])=>{o[pre+k]=v&&typeof v=="object"?JSON.stringify(v):String(v)});add(d.info,"");add(d.telemetry,"");add(d.location,"location_");return o}
 function devMatch(f,qs,attr){const toks=qs.trim().split(/\s+/).filter(Boolean);
  return toks.every(t=>{let neg=false;if(t.length>1&&t[0]=="-"){neg=true;t=t.slice(1)}let ok;const m=t.match(/^([A-Za-z0-9_.]+)(>=|<=|:|=|>|<)(.+)$/);
@@ -488,6 +507,13 @@ async function loadOrg(){ORG=await api("/api/org");$("on").value=ORG.name;$("ori
  $("at").textContent=ORG.agent_token||"";$("cs").textContent=ORG.crm_secret||"";$("ak").textContent=ORG.api_key||"";
  $("ret_e").value=ORG.event_retention_days;$("ret_h").value=ORG.hb_retention_days;$("on").disabled=ME.role!="admin"}
 function flash(id,text,good){const b=$(id);b.textContent=text;b.className="msg "+(good?"good":"err")}
+let RLIST=[];
+async function loadRestricted(){RLIST=await api("/api/restricted").catch(()=>[]);
+ $("rsform").style.display=canManage()?"":"none";
+ $("rslist").innerHTML=RLIST.map(x=>`<tr><td>${esc(x.domain)}</td><td>${dt(x.created_at)}</td><td>${canManage()?`<button onclick="delRestricted(${x.id})">Remove</button>`:""}</td></tr>`).join("")||'<tr><td colspan="3" class="m">None yet. WhatsApp is still always reported.</td></tr>'}
+async function addRestricted(){const v=$("rsnew").value.trim();if(!v)return;
+ try{await api("/api/restricted","POST",{domain:v});$("rsnew").value="";flash("rsmsg","Added",1);loadRestricted()}catch(e){flash("rsmsg",e.message)}}
+async function delRestricted(id){if(!confirm("Stop reporting this site?"))return;await api("/api/restricted?id="+id,"DELETE");loadRestricted()}
 async function saveOrg(){try{await api("/api/org","POST",{name:$("on").value,allowed_origins:$("orig").value});flash("omsg","Saved",1)}catch(e){flash("omsg",e.message)}}
 async function saveRet(){try{await api("/api/retention","POST",{events:+$("ret_e").value,hb:+$("ret_h").value});flash("rmsg","Saved",1)}catch(e){flash("rmsg",e.message)}}
 async function rot(w){const warn={agent:"Installed agents stop reporting until reinstalled.",api:"Your backend must be updated with the new key.",crm:"Your backend must be updated with the new secret."}[w];
