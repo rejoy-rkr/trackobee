@@ -51,7 +51,8 @@
       return ok(await sb.rpc("tb_daily_report", { p_start: a, p_end: b })).map(r => ({ user: r.usr, host: r.host, facility: r.facility, ips: r.ips, first: r.first_ts, last: r.last_ts, screen_on: r.screen_on, idle: r.idle, locked: r.locked })); }
     if (p === "/api/events") {                                   // ?from=YYYY-MM-DD&to=YYYY-MM-DD (local days) or ?days=N
       let from, to;
-      if (q.get("from")) { from = dayRange(q.get("from"))[0]; to = dayRange(q.get("to") || q.get("from"))[1]; }
+      if (q.get("since")) { from = Number(q.get("since")); to = Number(q.get("until") || Math.floor(Date.now() / 1000) + 60); }
+      else if (q.get("from")) { from = dayRange(q.get("from"))[0]; to = dayRange(q.get("to") || q.get("from"))[1]; }
       else { const days = Number(q.get("days") || 0), now = Math.floor(Date.now() / 1000);
         from = days > 0 ? now - days * 86400 : Math.floor(new Date(new Date().toDateString()) / 1000); to = now + 60; }
       const out = [];
@@ -59,6 +60,13 @@
         const r = ok(await sb.from("tb_ev").select("*").gte("ts", from).lt("ts", to).order("ts", { ascending: false }).range(off, off + 999));
         out.push(...r); if (r.length < 1000) break; }
       return out; }
+    if (p === "/api/checkins") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];     // first working moment of each day
+      const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
+      const r = await sb.rpc("tb_day_checkins", { p_start: a, p_end: b, p_tz: tz }); if (r.error) return [];
+      return r.data.map(x => ({ day: x.day, user: x.usr, host: x.host, checkin: x.checkin, lastwork: x.lastwork })); }
+    if (p === "/api/activity") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
+      const r = await sb.rpc("tb_activity_usage", { p_start: a, p_end: b }); if (r.error) return [];
+      return r.data.map(x => ({ user: x.usr, host: x.host, app: x.app, site: x.site, title: x.title, seconds: x.seconds })); }
     if (p === "/api/work") { const a = dayRange(q.get("from"))[0], b = dayRange(q.get("to") || q.get("from"))[1];
       const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone) || "UTC";
       return ok(await sb.rpc("tb_work_summary", { p_start: a, p_end: b, p_tz: tz })).map(r => ({ day: r.day, user: r.usr, hosts: r.hosts || [], worked: r.worked, away: r.away, locked: r.locked, first: r.first_ts, last: r.last_ts })); }
@@ -119,7 +127,7 @@
 
   async function extInfo() { try { const r = await fetch(`${siteUrl()}/extension/info.json`); return r.ok ? await r.json() : null; } catch (e) { return null; } }
   async function downloadInstaller(os, withExt) {          // admins and sub-admins; the agent token never touches the page source
-    const info = ok(await sb.rpc("tb_installer_info")); const { makeInstaller, saveFile } = await import("./installers.js?v=20261203b");
+    const info = ok(await sb.rpc("tb_installer_info")); const { makeInstaller, saveFile } = await import("./installers.js?v=20261204a");
     const r = makeInstaller(os, { siteUrl: siteUrl(), ingestUrl: `${cfg.supabaseUrl}/rest/v1/rpc/tb_ingest_heartbeat`, anonKey: cfg.anonKey, agentToken: info.agent_token, allowedOrigins: info.allowed_origins }, await packaged(), withExt ? { ext: await extInfo() || {} } : null);
     saveFile(r.name, r.body);
   }
@@ -127,18 +135,18 @@
     const rows = await api("/api/report?date=" + date); const f = t => new Date(t * 1000).toLocaleTimeString();
     const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     const csv = ["user,host,facility,ips,first_seen,last_seen,screen_on_min,idle_min,locked_min", ...rows.map(a => [a.user, a.host, a.facility || "", a.ips.join(";"), f(a.first), f(a.last), Math.floor(a.screen_on / 60), Math.floor(a.idle / 60), Math.floor(a.locked / 60)].map(q).join(","))].join("\n");
-    (await import("./installers.js?v=20261203b")).saveFile(`trackobee-${date}.csv`, csv);
+    (await import("./installers.js?v=20261204a")).saveFile(`trackobee-${date}.csv`, csv);
   }
 
   async function exportEvents(from, to) {
     const rows = await api(`/api/events?from=${from}&to=${to}`); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     const csv = ["time,event,website_user,os_user,computer,facility,public_ip,source,detail", ...rows.map(e => [new Date(e.ts * 1000).toISOString(), e.type, e.crm_user, e.os_user, e.host, e.facility, e.pub_ip, e.source, e.detail].map(q).join(","))].join("\n");
-    (await import("./installers.js?v=20261203b")).saveFile(`trackobee-events-${from}_to_${to}.csv`, csv);
+    (await import("./installers.js?v=20261204a")).saveFile(`trackobee-events-${from}_to_${to}.csv`, csv);
   }
   async function exportWork(from, to) {
     const rows = await api(`/api/work?from=${from}&to=${to}`); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"'; const h = s => (s / 3600).toFixed(2);
     const csv = ["date,employee,computers,worked_hours,away_hours,locked_hours,first_seen,last_seen", ...rows.map(r => [r.day, r.user, r.hosts.join(";"), h(r.worked), h(r.away + r.locked), h(r.locked), new Date(r.first * 1000).toLocaleTimeString(), new Date(r.last * 1000).toLocaleTimeString()].map(q).join(","))].join("\n");
-    (await import("./installers.js?v=20261203b")).saveFile(`trackobee-work-${from}_to_${to}.csv`, csv);
+    (await import("./installers.js?v=20261204a")).saveFile(`trackobee-work-${from}_to_${to}.csv`, csv);
   }
 
   const TB = {
