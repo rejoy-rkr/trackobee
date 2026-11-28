@@ -366,7 +366,7 @@ curl ".../rest/v1/tb_ev?crm_user=eq.priya&ts=gte.1795700000&ts=lt.1795786400&ord
 | `tb_profiles` | dashboard user | `user_id`, `org_id`, `email`, `name`, `role` (`owner`/`admin`/`sub_admin`/`read_only`), `active` |
 | `tb_hb` | heartbeat | `org_id, ts, host, ip, pub_ip, os_user, crm_user, facility, state, idle, app, title, site, acct` (`crm_user` holds the website login, or the Chrome account when there is none) |
 | `tb_ev` | event | `org_id, ts, host, pub_ip, os_user, crm_user, facility, type, source, detail` |
-| `tb_devices` | computer | `host`, `info` (json), `telemetry` (json), `location` (json), `agent_version`, `facility_override` (`NULL` automatic, `__none__` no facility, or a facility name), `first_seen`, `updated_at` |
+| `tb_devices` | computer | `host`, `info` (json), `telemetry` (json), `location` (json), `agent_version`, `facility_override` (`NULL` automatic, `__none__` no facility, or a facility name), `force_update_at` (set by `tb_force_update`, cleared once delivered), `first_seen`, `updated_at` |
 | `tb_facilities` | site | `name`, `cidr` |
 | `tb_pairings` | website user to PC | `host`, `crm_user`, `paired_at` (kept 12 h) |
 

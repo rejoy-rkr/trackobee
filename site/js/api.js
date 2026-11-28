@@ -90,6 +90,7 @@
       const m = {}; (live.data || []).forEach(r => { m[r.host] = r; });
       return ok(devs).map(d => ({ ...d, fac: m[d.host] ? m[d.host].facility : undefined, fac_src: m[d.host] ? m[d.host].facility_source : undefined })); }
     if (p === "/api/device/facility" && method === "POST") { ok(await sb.rpc("tb_set_device_facility", { p_host: body.host, p_facility: body.facility })); return { ok: true }; }
+    if (p === "/api/device/force-update" && method === "POST") { const n = ok(await sb.rpc("tb_force_update", { p_host: body.host || null })); return { ok: true, n }; }
     if (p === "/api/facilities") {
       if (method === "POST") { const list = (body.cidrs || [body.cidr]).filter(Boolean).map(c => ({ org_id: ORG_ID, name: (body.name || "").trim().slice(0, 80), cidr: String(c).trim() }));
         const r = await sb.from("tb_facilities").upsert(list, { onConflict: "org_id,cidr" });

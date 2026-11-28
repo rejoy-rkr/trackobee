@@ -6,7 +6,8 @@ light telemetry, and an approximate (IP based, city level) location. Everything 
 fields can be added here without touching the database or the installer.
 
 The agent keeps itself up to date: every few hours it downloads the newest agent from the organization's site, tests it, swaps it in
-and restarts itself. The installer therefore never needs to change.
+and restarts itself. The installer therefore never needs to change. An admin can also force that check to happen right away from
+the dashboard (Devices: Force update); the next heartbeat's response carries the request and the agent acts on it within one beat.
 """
 import ctypes, getpass, json, os, platform, re, shutil, signal, socket, subprocess, sys, threading, time, urllib.error, urllib.request
 import itertools
@@ -15,7 +16,7 @@ import base64, collections, configparser, csv, datetime, functools, glob, hashli
 import runpy, sqlite3, ssl, struct, tempfile, textwrap, traceback, uuid, xml.etree.ElementTree, zlib  # noqa: F401
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "4.4"
+VERSION = "4.5"
 
 FROZEN = getattr(sys, "frozen", False)
 OSN = platform.system()
@@ -500,7 +501,8 @@ def event(t, user=None):
     with L: S["events"].append({"type": t, "ts": int(time.time()), **({"user": user} if user else {})})
 
 def send_beat(host, osu, st, idle, evs, tok, extra=None):
-    """One heartbeat to the backend. True when it was accepted (so queued events can be dropped)."""
+    """One heartbeat to the backend. Returns the parsed response ({} when it was not accepted), so queued events
+    are dropped only on acceptance and the caller can act on any instruction the backend sent back (e.g. force_update)."""
     extra = extra or {}
     try:
         if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
@@ -510,16 +512,17 @@ def send_beat(host, osu, st, idle, evs, tok, extra=None):
             for payload in (full, ws, wt, nt, base):
                 rq = urllib.request.Request(INGEST, json.dumps(payload).encode(), {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
                 try:
-                    return json.loads(urllib.request.urlopen(rq, timeout=15).read() or b"{}").get("ok") is True
+                    r = json.loads(urllib.request.urlopen(rq, timeout=15).read() or b"{}")
+                    return r if r.get("ok") is True else {}
                 except urllib.error.HTTPError as e:
                     if payload is not base and e.code in (400, 404): continue      # backend not upgraded yet: fall back to the basic heartbeat
-                    return False
-            return False
+                    return {}
+            return {}
         body = json.dumps(dict(host=host, ip=local_ip(), os_user=osu, state=st, idle=idle, token=tok, events=evs)).encode()   # legacy Flask server
         rq = urllib.request.Request(SERVER + "/api/agent/heartbeat", body, {"Content-Type": "application/json", "X-Token": AGENT_TOKEN})
-        urllib.request.urlopen(rq, timeout=10).read(); return True
+        urllib.request.urlopen(rq, timeout=10).read(); return {"ok": True}
     except Exception:
-        return False
+        return {}
 
 HOST, OSU = socket.gethostname(), getpass.getuser()
 
@@ -552,12 +555,18 @@ def beat_loop():
             evs, tok = list(S["events"]), S["token"]
             if S["sys_new"]: extra["sys"] = S["sys"]
             if S["loc_new"]: extra["location"] = S["loc"]
-        if send_beat(host, osu, st, idle, evs, tok, extra):
+        r = send_beat(host, osu, st, idle, evs, tok, extra)
+        if r:
             with L:
                 del S["events"][:len(evs)]
                 if "sys" in extra: S["sys_new"] = False
                 if "location" in extra: S["loc_new"] = False
             save_state(last_beat=int(time.time()))
+            if r.get("force_update") and check_update():     # admin asked for an immediate update check from the dashboard
+                S["restart"] = True
+                try: SRV.shutdown()
+                except Exception: pass
+                return
         else:
             with L: del S["events"][:-200]       # keep memory bounded while the server is unreachable
         time.sleep(INTERVAL)

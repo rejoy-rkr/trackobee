@@ -37,7 +37,7 @@ input[type=number]{width:90px}
 .sub{margin:14px 0 6px;font-size:13px;font-weight:600}.det table{font-size:13px}.det .card{background:var(--card)}.info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 18px;margin-bottom:6px}.info div{white-space:normal}.info small{color:var(--mut);display:block;font-size:11px}
 </style></head><body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="js/api.js?v=20261205c"></script>
+<script src="js/api.js?v=20261206a"></script>
 
 <header><h1>Track<span>obee</span></h1><b id="org"></b><span class="sp"></span><span id="who" class="m"></span><span id="role" class="b role"></span>
 <a href="docs.html" target="_blank" class="m">Docs</a><button onclick="logout()">Sign out</button></header>
@@ -99,8 +99,8 @@ input[type=number]{width:90px}
  <h2>Devices</h2>
  <p class="m">Everything each agent reports about its computer. Search any attribute: type plain words (matches every field), or use <code>field:value</code>, <code>field=exact</code>, <code>field&gt;number</code>, <code>-field:value</code> to exclude. Examples: <code>os:windows</code> · <code>ram_gb&gt;8</code> · <code>battery_percent&lt;20</code> · <code>-os:windows</code> · <code>manufacturer:lenovo serial:PF</code>. Click a row for all fields.</p>
  <div class="bar"><input id="dq" placeholder="Search…" style="min-width:260px" oninput="drawDevices()"><select id="dattr" onchange="drawDevices()"><option value="">in all attributes</option></select>
-  <select id="dfac" onchange="drawDevices()"><option value="">All facilities</option></select><span id="dg-w"></span><button class="pri sync" onclick="loadDevices()">⟳ Sync</button><span class="m" id="devupd"></span><span class="m" id="dcount"></span></div>
- <div class="card"><table><thead><tr><th>Computer</th><th>Facility</th><th>Model</th><th>Serial number</th><th>OS</th><th>CPU / RAM</th><th>Battery</th><th>Location</th><th>Wi-Fi</th><th>Agent</th><th>Updated</th></tr></thead><tbody id="dv"></tbody></table></div>
+  <select id="dfac" onchange="drawDevices()"><option value="">All facilities</option></select><span id="dg-w"></span><button class="pri sync" onclick="loadDevices()">⟳ Sync</button><button id="forceupdall" onclick="forceUpdate()">⇪ Force update all</button><span class="m" id="devupd"></span><span class="m" id="dcount"></span></div>
+ <div class="card"><table><thead><tr><th>Computer</th><th>Facility</th><th>Model</th><th>Serial number</th><th>OS</th><th>CPU / RAM</th><th>Battery</th><th>Location</th><th>Wi-Fi</th><th>Agent</th><th>Updated</th><th></th></tr></thead><tbody id="dv"></tbody></table></div>
 </section>
 
 <section id="s-fac">
@@ -196,7 +196,7 @@ async function init(){await TB.init();ME=await api("/api/me");if(ME.role=="owner
  if(ME.role!="read_only")tabs.push(["set","Settings"]);
  $("nav").innerHTML=tabs.map(([i,n])=>`<button data-id="${i}">${n}</button>`).join("");
  $("nav").onclick=e=>{if(e.target.dataset.id)show(e.target.dataset.id)};
- if(ME.role=="read_only")$("facform").style.display="none";
+ if(ME.role=="read_only"){$("facform").style.display="none";$("forceupdall").style.display="none"}
  setRange("rf","rt",6);$("q").oninput=drawLive;$("qf").onchange=$("qs").onchange=drawLive;
  if(ME.role!="read_only")$("onbtns").innerHTML=[["windows","Windows"],["mac","macOS"],["linux","Linux"]].map(([k,n])=>`<button class="pri" onclick="TB.downloadInstaller('${k}').catch(e=>alert(e.message))">Download for ${n}</button>`).join("")+' <a href="docs.html" target="_blank">Installation guide</a>';
  else $("onbtns").textContent="Ask an admin to install the agent.";
@@ -377,9 +377,11 @@ function drawDevices(){const q=$("dq").value,attr=$("dattr").value,qf=$("dfac").
  const rows=flats.filter(x=>(!qf||x.d.fac==qf)&&devMatch(x.f,q,attr));
  $("dcount").textContent=rows.length==DEVS.length?`${DEVS.length} computers`:`${rows.length} of ${DEVS.length} computers`;
  $("dv").innerHTML=grouped("dg",rows.map(x=>({...x,host:x.d.host,fac:x.d.fac||"Unmapped"})),$("dg").value,11,({d})=>{const i=d.info||{},tl=d.telemetry||{},lo=d.location||{};
-  const main=`<tr style="cursor:pointer" data-h="${esc(d.host)}"><td>${esc(d.host)}${newTag(d.first_seen,"Computer")}</td><td>${ME.role!="read_only"&&d.fac!==undefined?facSelect(d.host,d.fac||"Unmapped",d.fac_src):esc(d.fac||"")}</td><td>${esc([i.manufacturer,i.model_version||i.model].filter(Boolean).join(" "))}</td><td>${esc(i.serial_number||i.board_serial||"")}</td><td>${esc(i.os||"")}</td><td>${esc([i.cpu,i.ram_gb?i.ram_gb+" GB":i.ram].filter(Boolean).join(" · "))}</td><td>${tl.battery_percent==null?"":tl.battery_percent+"%"+(tl.charging?" ⚡":"")}${i.battery_health_percent?` <span class="m">(health ${i.battery_health_percent}%)</span>`:""}</td><td>${esc([lo.city,lo.country].filter(Boolean).join(", "))}</td><td>${esc(tl.wifi_ssid||"")}</td><td>${esc(d.agent_version||"")}</td><td>${dt(d.updated_at)}</td></tr>`;
-  return main+(open.has(d.host)?`<tr><td colspan="11"><pre style="margin:0;white-space:pre-wrap;font:12px ui-monospace,monospace">${esc(JSON.stringify({info:i,telemetry:tl,location:lo},null,2))}</pre></td></tr>`:"")},a=>`${a.length} computer${a.length==1?"":"s"}`)||'<tr><td class="m">No computers match.</td></tr>';
- $("dv").onclick=e=>{if(e.target.closest("select"))return;const r=e.target.closest("tr[data-h]");if(!r)return;const h=r.dataset.h;open.has(h)?open.delete(h):open.add(h);drawDevices()}}
+  const main=`<tr style="cursor:pointer" data-h="${esc(d.host)}"><td>${esc(d.host)}${newTag(d.first_seen,"Computer")}</td><td>${ME.role!="read_only"&&d.fac!==undefined?facSelect(d.host,d.fac||"Unmapped",d.fac_src):esc(d.fac||"")}</td><td>${esc([i.manufacturer,i.model_version||i.model].filter(Boolean).join(" "))}</td><td>${esc(i.serial_number||i.board_serial||"")}</td><td>${esc(i.os||"")}</td><td>${esc([i.cpu,i.ram_gb?i.ram_gb+" GB":i.ram].filter(Boolean).join(" · "))}</td><td>${tl.battery_percent==null?"":tl.battery_percent+"%"+(tl.charging?" ⚡":"")}${i.battery_health_percent?` <span class="m">(health ${i.battery_health_percent}%)</span>`:""}</td><td>${esc([lo.city,lo.country].filter(Boolean).join(", "))}</td><td>${esc(tl.wifi_ssid||"")}</td><td>${esc(d.agent_version||"")}</td><td>${dt(d.updated_at)}</td><td>${canManage()?`<button onclick="forceUpdate('${esc(d.host)}',event)">Force update</button>`:""}</td></tr>`;
+  return main+(open.has(d.host)?`<tr><td colspan="12"><pre style="margin:0;white-space:pre-wrap;font:12px ui-monospace,monospace">${esc(JSON.stringify({info:i,telemetry:tl,location:lo},null,2))}</pre></td></tr>`:"")},a=>`${a.length} computer${a.length==1?"":"s"}`)||'<tr><td class="m">No computers match.</td></tr>';
+ $("dv").onclick=e=>{if(e.target.closest("select,button"))return;const r=e.target.closest("tr[data-h]");if(!r)return;const h=r.dataset.h;open.has(h)?open.delete(h):open.add(h);drawDevices()}}
+async function forceUpdate(host,ev){if(ev)ev.stopPropagation();if(!confirm(host?`Tell ${host} to check for an agent update now?`:`Tell every computer (${DEVS.length}) to check for an agent update now?`))return;
+ try{const r=await api("/api/device/force-update","POST",{host:host||null});alert(host?"Requested. It applies on the computer's next check-in (usually within a minute).":`Requested for ${r.n} computer(s). Each applies it on its next check-in (usually within a minute).`)}catch(e){alert(e.message)}}
 // ---- facilities
 const canManage=()=>ME.role!="read_only";
 function normCidr(raw){const s=raw.trim().replace(/\s+/g,"");if(!s)return null;if(s.includes(":"))return{cidr:s,single:!s.includes("/")};
