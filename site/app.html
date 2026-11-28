@@ -37,7 +37,7 @@ input[type=number]{width:90px}
 .sub{margin:14px 0 6px;font-size:13px;font-weight:600}.det table{font-size:13px}.det .card{background:var(--card)}.info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 18px;margin-bottom:6px}.info div{white-space:normal}.info small{color:var(--mut);display:block;font-size:11px}
 </style></head><body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="js/api.js?v=20261205b"></script>
+<script src="js/api.js?v=20261205c"></script>
 
 <header><h1>Track<span>obee</span></h1><b id="org"></b><span class="sp"></span><span id="who" class="m"></span><span id="role" class="b role"></span>
 <a href="docs.html" target="_blank" class="m">Docs</a><button onclick="logout()">Sign out</button></header>
@@ -417,8 +417,8 @@ async function delFac(id){if(!confirm("Remove this segment?"))return;await api("
 // ---- integrate
 async function loadDeploy(){DEP=await api("/api/deploy/info");drawDeploy();
  const names={windows:"Windows",mac:"macOS",linux:"Linux"};
- $("instbtns").innerHTML=`<div class="sub" style="width:100%;margin:0">Standard (lightweight): working status, time, apps, browser page titles</div>`+Object.entries(names).map(([k,n])=>`<button class="pri" onclick="TB.downloadInstaller('${k}').catch(e=>alert(e.message))">Download for ${n}</button>`).join("")+`<div class="sub" style="width:100%;margin:12px 0 0">With browser extension: also the real website (domain) of the active Chrome / Edge / Brave tab</div>`+["windows","linux"].map(k=>`<button onclick="TB.downloadInstaller('${k}',true).catch(e=>alert(e.message))">Download for ${names[k]} + extension</button>`).join("");
- const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python 3")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed.";
+ $("instbtns").innerHTML=`<div class="sub" style="width:100%;margin:0">Standard (lightweight): working status, time, apps, browser page titles</div>`+Object.entries(names).map(([k,n])=>`<button class="pri" onclick="TB.downloadInstaller('${k}').catch(e=>alert(e.message))">Download for ${n}</button>`).join("")+`<div class="sub" style="width:100%;margin:12px 0 0">Uninstall (removes the agent, its startup entry and the browser-extension policy from a computer)</div>`+Object.entries(names).map(([k,n])=>`<button onclick="TB.downloadUninstaller('${k}').catch(e=>alert(e.message))">Uninstaller for ${n}</button>`).join("")+`<div class="sub" style="width:100%;margin:12px 0 0">With browser extension: also the real website (domain) of the active Chrome / Edge / Brave tab</div>`+["windows","linux"].map(k=>`<button onclick="TB.downloadInstaller('${k}',true).catch(e=>alert(e.message))">Download for ${names[k]} + extension</button>`).join("");
+ const pk=DEP.packaged;$("instnote").textContent="Windows: "+(pk.windows?"packaged .exe":"needs Python 3 (no packaged .exe)")+" · macOS: "+(pk.mac?"packaged binary":"uses system Python 3")+" · Linux: "+(pk.linux?"packaged binary":"uses system Python 3")+". Installers run per user, no admin needed. To remove the agent from a computer, run the matching uninstaller below.";
  if(/^(localhost|127\.|\[::1\])/.test(location.hostname)&&!$("instnote").nextSibling.className?.includes("err")){const w=document.createElement("div");w.className="msg err";
   w.textContent="Warning: you opened the dashboard as "+location.host+". Installers made now point to that address, so they only work on THIS computer.";$("instnote").after(w)}}
 function drawDeploy(){const s=DEP.server,sec=DEP.crm_secret||"YOUR_EMBED_SIGNING_SECRET",id=DEP.public_id,ep=DEP.events_url,key=DEP.api_key||"YOUR_API_KEY";

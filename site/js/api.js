@@ -127,30 +127,33 @@
 
   async function extInfo() { try { const r = await fetch(`${siteUrl()}/extension/info.json`); return r.ok ? await r.json() : null; } catch (e) { return null; } }
   async function downloadInstaller(os, withExt) {          // admins and sub-admins; the agent token never touches the page source
-    const info = ok(await sb.rpc("tb_installer_info")); const { makeInstaller, saveFile } = await import("./installers.js?v=20261205b");
+    const info = ok(await sb.rpc("tb_installer_info")); const { makeInstaller, saveFile } = await import("./installers.js?v=20261205c");
     const r = makeInstaller(os, { siteUrl: siteUrl(), ingestUrl: `${cfg.supabaseUrl}/rest/v1/rpc/tb_ingest_heartbeat`, anonKey: cfg.anonKey, agentToken: info.agent_token, allowedOrigins: info.allowed_origins }, await packaged(), withExt ? { ext: await extInfo() || {} } : null);
     saveFile(r.name, r.body);
+  }
+  async function downloadUninstaller(os) {
+    const { makeUninstaller, saveFile } = await import("./installers.js?v=20261205c"); const r = makeUninstaller(os); saveFile(r.name, r.body);
   }
   async function exportCsv(date) {
     const rows = await api("/api/report?date=" + date); const f = t => new Date(t * 1000).toLocaleTimeString();
     const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     const csv = ["user,host,facility,ips,first_seen,last_seen,screen_on_min,idle_min,locked_min", ...rows.map(a => [a.user, a.host, a.facility || "", a.ips.join(";"), f(a.first), f(a.last), Math.floor(a.screen_on / 60), Math.floor(a.idle / 60), Math.floor(a.locked / 60)].map(q).join(","))].join("\n");
-    (await import("./installers.js?v=20261205b")).saveFile(`trackobee-${date}.csv`, csv);
+    (await import("./installers.js?v=20261205c")).saveFile(`trackobee-${date}.csv`, csv);
   }
 
   async function exportEvents(from, to) {
     const rows = await api(`/api/events?from=${from}&to=${to}`); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     const csv = ["time,event,website_user,os_user,computer,facility,public_ip,source,detail", ...rows.map(e => [new Date(e.ts * 1000).toISOString(), e.type, e.crm_user, e.os_user, e.host, e.facility, e.pub_ip, e.source, e.detail].map(q).join(","))].join("\n");
-    (await import("./installers.js?v=20261205b")).saveFile(`trackobee-events-${from}_to_${to}.csv`, csv);
+    (await import("./installers.js?v=20261205c")).saveFile(`trackobee-events-${from}_to_${to}.csv`, csv);
   }
   async function exportWork(from, to) {
     const rows = await api(`/api/work?from=${from}&to=${to}`); const q = v => '"' + String(v ?? "").replace(/"/g, '""') + '"'; const h = s => (s / 3600).toFixed(2);
     const csv = ["date,employee,computers,worked_hours,away_hours,locked_hours,first_seen,last_seen", ...rows.map(r => [r.day, r.user, r.hosts.join(";"), h(r.worked), h(r.away + r.locked), h(r.locked), new Date(r.first * 1000).toLocaleTimeString(), new Date(r.last * 1000).toLocaleTimeString()].map(q).join(","))].join("\n");
-    (await import("./installers.js?v=20261205b")).saveFile(`trackobee-work-${from}_to_${to}.csv`, csv);
+    (await import("./installers.js?v=20261205c")).saveFile(`trackobee-work-${from}_to_${to}.csv`, csv);
   }
 
   const TB = {
-    init, api, downloadInstaller, exportCsv, exportEvents, exportWork, status, siteUrl,
+    init, api, downloadInstaller, downloadUninstaller, exportCsv, exportEvents, exportWork, status, siteUrl,
     publicSettings: async () => { const r = await sb.rpc("tb_public_settings"); return r.error ? { require_approval: false } : r.data; },
     claim: async () => ok(await sb.rpc("tb_claim_workspace")),
     sb: () => sb, cfg: () => cfg,

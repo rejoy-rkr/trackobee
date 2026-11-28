@@ -198,6 +198,49 @@ else echo "The agent started but no report reached the server. Log:"; tail -n 15
 ` };
 }
 
+// Standalone uninstaller (no organization data needed, so it carries no token). Same removals the installers do, plus the browser-extension policy.
+export function makeUninstaller(os) {
+  if (os === "windows") {
+    const body = [
+      "@echo off", "setlocal",
+      "echo Removing Trackobee from this computer...",
+      "taskkill /F /IM trackobee-agent.exe >nul 2>&1",
+      "taskkill /F /IM pythonw.exe >nul 2>&1",
+      "reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v Trackobee /f >nul 2>&1",
+      "schtasks /Delete /TN Trackobee /F >nul 2>&1",
+      "reg delete \"HKCU\\Software\\Policies\\Google\\Chrome\\ExtensionInstallForcelist\" /v 77 /f >nul 2>&1",
+      "reg delete \"HKCU\\Software\\Policies\\Microsoft\\Edge\\ExtensionInstallForcelist\" /v 77 /f >nul 2>&1",
+      "reg delete \"HKCU\\Software\\Policies\\BraveSoftware\\Brave\\ExtensionInstallForcelist\" /v 77 /f >nul 2>&1",
+      "timeout /t 2 /nobreak >nul",
+      "rmdir /S /Q \"%USERPROFILE%\\.trackobee\" 2>nul",
+      "rmdir /S /Q \"%LOCALAPPDATA%\\Trackobee\" 2>nul",
+      "echo Trackobee was removed. Restart Chrome / Edge if the browser extension was installed.",
+      "pause", ""].join("\r\n");
+    return { name: "trackobee-uninstall.bat", body };
+  }
+  if (os === "linux") return { name: "trackobee-uninstall.sh", body: String.raw`#!/bin/sh
+# Trackobee agent remover (Linux).   Run:  sh trackobee-uninstall.sh
+D="$HOME/.trackobee"
+echo "Removing Trackobee from this computer..."
+systemctl --user disable --now trackobee.service >/dev/null 2>&1
+rm -f "$HOME/.config/systemd/user/trackobee.service" "$HOME/.config/autostart/trackobee.desktop"
+systemctl --user daemon-reload >/dev/null 2>&1
+pkill -f "$D/agent" 2>/dev/null
+rm -rf "$D"
+for P in /etc/opt/chrome/policies/managed /etc/chromium/policies/managed /var/snap/chromium/current/policies/managed /etc/opt/edge/policies/managed /etc/brave/policies/managed; do
+  if [ -f "$P/trackobee.json" ]; then sudo rm -f "$P/trackobee.json" 2>/dev/null || echo "  could not remove $P/trackobee.json (needs sudo)"; fi
+done
+echo "Trackobee was removed."
+` };
+  return { name: "trackobee-uninstall.command", body: String.raw`#!/bin/sh
+# Trackobee agent remover (macOS).   Run: double-click / sh trackobee-uninstall.command
+D="$HOME/.trackobee"; P="$HOME/Library/LaunchAgents/global.trackobee.agent.plist"
+echo "Removing Trackobee from this computer..."
+launchctl unload "$P" 2>/dev/null; rm -f "$P"; pkill -f "$D/agent" 2>/dev/null; rm -rf "$D"
+echo "Trackobee was removed."
+` };
+}
+
 export function saveFile(name, body) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([body], { type: "application/octet-stream" }));
