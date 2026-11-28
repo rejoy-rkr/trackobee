@@ -15,7 +15,7 @@ import base64, collections, configparser, csv, datetime, functools, glob, hashli
 import runpy, sqlite3, ssl, struct, tempfile, textwrap, traceback, uuid, xml.etree.ElementTree, zlib  # noqa: F401
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "4.3"
+VERSION = "4.4"
 
 FROZEN = getattr(sys, "frozen", False)
 OSN = platform.system()
@@ -48,7 +48,7 @@ PORT, INTERVAL = int(os.environ.get("TB_AGENT_PORT", "47821")), int(os.environ.g
 CFG = os.path.join(HOME_DIR, "config.json")
 STATE_FILE = os.path.join(HOME_DIR, "state.json")
 S = {"token": None, "user": None, "events": [], "sys": None, "sys_new": False, "loc": None, "loc_new": False,
-     "kwin": False, "restart": False, "ssid": (0, None), "tab": (0, None)}
+     "kwin": False, "restart": False, "ssid": (0, None), "tab": (0, None), "acct": (0, None)}
 L = threading.Lock()
 SRV = None
 
@@ -314,6 +314,12 @@ def foreground_info():
 
 def foreground_app(): return foreground_info()[0]
 
+def browser_account():
+    """Chrome sign-in of the person using this PC (from the browser extension). Remembered for 8 hours so closing the browser does not
+    change who the activity belongs to; forgotten on a PC sign-in/sign-out."""
+    t, a = S["acct"]
+    return a if a and time.time() - t < 8 * 3600 else None
+
 def browser_site(app):
     """Domain of the active browser tab, as reported by the Trackobee browser extension (only when it is installed and fresh)."""
     if not BROWSER_EXT or not app: return None
@@ -490,6 +496,7 @@ def fetch_location():
 
 # ------------------------------------------------------------------ events + heartbeat
 def event(t, user=None):
+    if t in ("login", "logoff"): S["acct"] = (0, None)       # a different person may sit down next
     with L: S["events"].append({"type": t, "ts": int(time.time()), **({"user": user} if user else {})})
 
 def send_beat(host, osu, st, idle, evs, tok, extra=None):
@@ -499,8 +506,8 @@ def send_beat(host, osu, st, idle, evs, tok, extra=None):
         if INGEST:     # Supabase: call the tb_ingest_heartbeat database function directly
             base = dict(p_agent_token=AGENT_TOKEN, p_host=host, p_ip=local_ip(), p_os_user=osu, p_state=st, p_idle=int(idle), p_token=tok, p_events=evs)
             full = dict(base, p_app=extra.get("app"), p_telemetry=extra.get("telemetry"), p_sys=extra.get("sys"), p_location=extra.get("location"))
-            nt = dict(full); wt = dict(full, p_title=extra.get("title")); full = dict(wt, p_site=extra.get("site"))
-            for payload in (full, wt, nt, base):
+            nt = dict(full); wt = dict(full, p_title=extra.get("title")); ws = dict(wt, p_site=extra.get("site")); full = dict(ws, p_acct=extra.get("acct"))
+            for payload in (full, ws, wt, nt, base):
                 rq = urllib.request.Request(INGEST, json.dumps(payload).encode(), {"Content-Type": "application/json", "apikey": APIKEY, "Authorization": "Bearer " + APIKEY})
                 try:
                     return json.loads(urllib.request.urlopen(rq, timeout=15).read() or b"{}").get("ok") is True
@@ -540,7 +547,7 @@ def beat_loop():
         if last and st != last: event("lock" if st == "locked" else "unlock")
         last = st
         app, title = foreground_info() if st == "active" else (None, None)
-        extra = {"app": app, "title": title, "site": browser_site(app), "telemetry": telemetry()}
+        extra = {"app": app, "title": title, "site": browser_site(app), "acct": browser_account() if BROWSER_EXT else None, "telemetry": telemetry()}
         with L:
             evs, tok = list(S["events"]), S["token"]
             if S["sys_new"]: extra["sys"] = S["sys"]
@@ -627,6 +634,8 @@ class H(BaseHTTPRequestHandler):
                 d = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", 0)), 2000)) or b"{}")
                 dom = re.sub(r"[^\w.() -]", "", str(d.get("domain") or ""))[:100] if d.get("active") else None
                 S["tab"] = (time.time(), dom or None)
+                acct = str(d.get("account") or "").strip().lower()[:100]
+                if re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", acct): S["acct"] = (time.time(), acct)
             except Exception: return self._send(400)
             return self._send(200, dict(ok=True))
         if not (self._host_ok() and self._origin()): return self._send(403)

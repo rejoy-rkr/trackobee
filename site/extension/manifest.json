@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Trackobee Browser Sites",
-  "description": "Tells the Trackobee agent on this computer which website (domain only) is in the active tab. Nothing is sent anywhere else.",
-  "version": "1.0.0",
+  "description": "Tells the Trackobee agent on this computer which website (domain only) and which Chrome account is signed in is in the active tab. Nothing is sent anywhere else.",
+  "version": "1.1.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAynGmHMb5rzasPit+4GGSyZzaY8x+txDzwg8hRuhgLOQu1ch+MTe7+KLpUBS/JVLPKU5R5qscWAcNT4lNgC2rcynX4zEPYKWeTcRNYsYcHP9r4Z4ul7UOc9yPaBcRNbYFeo6Y7uexpam21T4eCKWCTr+PUBoQp8yiDuhGpl06eNNdb1LGIU64ajAoW7C77VxsZVarB2cczxL/39R22rWbGc6pUfcF2u1mvAUZzMtAkDbsQrDl59Hloin4YmzvCRDzPhlQt9fkD7NVqWxpSWiAmET5HaGjEq2d5uy4OPKDwJziIEDJzgLMyiG5NR2zeZfvw67P9+8tfipIiSuLUV25vQIDAQAB",
   "minimum_chrome_version": "100",
-  "permissions": ["tabs", "alarms"],
+  "permissions": ["tabs", "alarms", "identity", "identity.email"],
   "host_permissions": ["http://127.0.0.1/*"],
   "background": { "service_worker": "background.js" },
   "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }

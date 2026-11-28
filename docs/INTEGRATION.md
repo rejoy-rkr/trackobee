@@ -44,7 +44,7 @@ Trackobee shows **who is working, on which computer, and for how long**: live st
 | Term | Meaning |
 |---|---|
 | **Workspace** | One organization's isolated data. Created from the sign-up page; the creator becomes its Admin. |
-| **Employee** | A person, identified by the **website user** if the website integration is used, otherwise by the PC's **OS username**. |
+| **Employee** | A person. OS usernames are often shared, so the person is identified by, in this order: the **website login** (website integration), the **Chrome account** reported by the browser extension, else the PC's **OS username**. The computer is always identified by its **serial number**, which is why nicknames, grouping and search work per computer. |
 | **Computer / host** | The machine name reported by the agent. One employee can use several computers. |
 | **Worked** | Screen unlocked **and** keyboard/mouse used within the last **2 minutes**. |
 | **Away** | Screen unlocked but **no activity for more than 2 minutes**. The dashboard's "Away" figure also includes locked time. |
@@ -157,6 +157,8 @@ Publishing (built by CI from `site/extension/`, served at `<site>/extension/`):
 
 - Self-hosted: add a GitHub secret `EXTENSION_KEY_PEM` (the private key; keep a backup, it fixes the extension id). CI then builds `trackobee.crx`, `update.xml` and `info.json`.
 - Chrome Web Store: upload `<site>/extension/trackobee-extension.zip`, then set the repository variable `CHROME_EXT_STORE_ID` to the store id. Installers then point browsers at the store, which works on unmanaged Windows PCs too.
+
+The extension also reads which **Chrome account is signed in** (email only, via the `identity.email` permission) and the agent uses it to identify the employee when there is no website login. The account is remembered for 8 hours so closing the browser does not change who the activity belongs to, and forgotten when the PC signs in or out.
 
 Dashboard: *Using now* shows `Chrome · domain`, and each employee's dropdown lists **Websites** by time. Database: `tb_hb.site`, read through `tb_site_usage(start, end)`.
 
@@ -339,7 +341,7 @@ Returns rows: `day` (date), `usr`, `hosts` (array), `worked`, `away`, `locked` (
 
 **`tb_app_usage`** `{p_start, p_end}`: rows `usr`, `app`, `seconds` (only time while working).
 
-**`tb_live_status`** `{}`: one row per computer: `host, ip, pub_ip, os_user, crm_user, facility, state` (`available`/`away`/`locked`/`offline`), `idle, last_seen, mismatch, app, battery, charging, model, location, facility_source` (`auto` or `manual`).
+**`tb_live_status`** `{}`: one row per computer: `host, ip, pub_ip, os_user, crm_user, facility, state` (`available`/`away`/`locked`/`offline`), `idle, last_seen, mismatch (always false now), app, battery, charging, model, location, facility_source` (`auto` or `manual`), `title, site, acct` (`acct` = Chrome account from the extension).
 
 **`tb_set_device_facility`** `{p_host, p_facility}`: move a computer to a facility (Admin / Sub-admin only; see section 12).
 
@@ -362,7 +364,7 @@ curl ".../rest/v1/tb_ev?crm_user=eq.priya&ts=gte.1795700000&ts=lt.1795786400&ord
 | `tb_orgs` | workspace | `name`, `public_id`, `allowed_origins`, `active`, `event_retention_days` (3-365), `hb_retention_days` (3-90) |
 | `tb_org_secrets` | workspace (Admin only) | `agent_token`, `api_key`, `crm_secret` |
 | `tb_profiles` | dashboard user | `user_id`, `org_id`, `email`, `name`, `role` (`owner`/`admin`/`sub_admin`/`read_only`), `active` |
-| `tb_hb` | heartbeat | `org_id, ts, host, ip, pub_ip, os_user, crm_user, facility, state, idle, app` |
+| `tb_hb` | heartbeat | `org_id, ts, host, ip, pub_ip, os_user, crm_user, facility, state, idle, app, title, site, acct` (`crm_user` holds the website login, or the Chrome account when there is none) |
 | `tb_ev` | event | `org_id, ts, host, pub_ip, os_user, crm_user, facility, type, source, detail` |
 | `tb_devices` | computer | `host`, `info` (json), `telemetry` (json), `location` (json), `agent_version`, `facility_override` (`NULL` automatic, `__none__` no facility, or a facility name), `first_seen`, `updated_at` |
 | `tb_facilities` | site | `name`, `cidr` |

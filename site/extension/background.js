@@ -11,6 +11,10 @@ function domainOf(url) {
   } catch (e) { return ""; }
 }
 
+async function account() {       // the Chrome sign-in (email); empty when the browser profile is not signed in
+  try { const i = await chrome.identity.getProfileUserInfo({ accountStatus: "ANY" }); return (i && i.email) || ""; } catch (e) { return ""; }
+}
+
 async function report() {
   let body = { active: false };
   try {
@@ -20,6 +24,7 @@ async function report() {
       if (tab) body = { active: true, domain: tab.incognito ? "(private window)" : domainOf(tab.url || tab.pendingUrl || "") };
     }
   } catch (e) {}
+  body.account = await account();
   try { await fetch(AGENT, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body) }); } catch (e) {}   // agent not running: ignore
 }
 
