@@ -37,7 +37,7 @@ input[type=number]{width:90px}
 .sub{margin:14px 0 6px;font-size:13px;font-weight:600}.det table{font-size:13px}.det .card{background:var(--card)}.info{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px 18px;margin-bottom:6px}.info div{white-space:normal}.info small{color:var(--mut);display:block;font-size:11px}
 </style></head><body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-<script src="js/api.js?v=20261205a"></script>
+<script src="js/api.js?v=20261205b"></script>
 
 <header><h1>Track<span>obee</span></h1><b id="org"></b><span class="sp"></span><span id="who" class="m"></span><span id="role" class="b role"></span>
 <a href="docs.html" target="_blank" class="m">Docs</a><button onclick="logout()">Sign out</button></header>
@@ -213,14 +213,14 @@ const stamp=id=>{const e=$(id);if(e)e.textContent="Updated "+new Date().toLocale
  hostNick=h=>NICKS[HKEY[h]]||"",
  qmatch=(q,user,hosts)=>{const toks=(q||"").toLowerCase().split(/\s+/).filter(Boolean);if(!toks.length)return true;
   const hay=[user,...[].concat(hosts||[]).flatMap(h=>[h,HSER[h]||"",hostNick(h)])].join(" ").toLowerCase();return toks.every(x=>hay.includes(x))},
- HFAC={},GRPR={},COLL=new Set(),GFN={},GK={},idx=()=>LIVE.forEach(r=>{HKEY[r.host]=nkey(r);HSER[r.host]=r.serial||"";HFAC[r.host]=r.facility||"Unmapped"}),
+ HFAC={},GRPR={},OPENG=new Set(),GFN={},GK={},idx=()=>LIVE.forEach(r=>{HKEY[r.host]=nkey(r);HSER[r.host]=r.serial||"";HFAC[r.host]=r.facility||"Unmapped"}),
  gkey=(mode,x)=>mode=="device"?x.host:mode=="employee"?x.user:(x.fac||HFAC[x.host]||"Unmapped"),
  gtext=(mode,k)=>mode=="device"?(hostNick(k)||HSER[k]||k):k,
  glabel=(mode,k)=>mode=="device"?`${esc(hostNick(k)||k)} <span class="m">${esc([HSER[k],k].filter((v,i,a)=>v&&a.indexOf(v)==i&&v!=(hostNick(k)||k)).join(" · "))}</span>`:esc(k),
  grouped=(sec,items,mode,ncols,rowFn,sumFn)=>{if(mode=="none"||!mode){GK[sec]=[];return items.map(rowFn).join("")}
   const m=new Map();items.forEach(x=>{const k=gkey(mode,x);(m.get(k)||m.set(k,[]).get(k)).push(x)});
   const keys=[...m.keys()].sort((a,b)=>gtext(mode,a).localeCompare(gtext(mode,b)));GK[sec]=keys.map(k=>sec+"|"+mode+"|"+k);
-  return keys.map(k=>{const gk=sec+"|"+mode+"|"+k,open=!COLL.has(gk),arr=m.get(k);
+  return keys.map(k=>{const gk=sec+"|"+mode+"|"+k,open=OPENG.has(gk),arr=m.get(k);
    return `<tr class="grp" data-gk="${esc(gk)}" data-sec="${sec}"><td colspan="${ncols}"><span class="chev">${open?"▾":"▸"}</span> ${glabel(mode,k)} <span class="m">· ${sumFn(arr)}</span></td></tr>`+(open?arr.map(rowFn).join(""):"")}).join("")},
  canNick=()=>ME.role=="admin"||ME.role=="sub_admin",NEWDAYS=7,nkey=r=>r.serial||"host:"+r.host,NICK=r=>NICKS[nkey(r)]||"",unick=(user,hosts)=>[...new Set((hosts||[]).map(h=>NICKS[HKEY[h]]).filter(Boolean))].join(", "),lbl=(user,nick)=>nick?`${esc(nick)} <span class="m">(${esc(user)})</span>`:esc(user),isNew=ts=>ts&&Date.now()/1000-ts<NEWDAYS*86400,
  newTag=(ts,what)=>isNew(ts)?`<span class="newtag" title="${what} added ${esc(dt(ts))}">New</span>`:"",
@@ -239,7 +239,7 @@ function drawLive(){
  if(gm=="facility"){shown.sort((a,b)=>(a.facility||"").localeCompare(b.facility||"")||ukey(a).localeCompare(ukey(b)));shown.forEach(r=>{const c=cnt[r.facility]??={n:0,available:0,away:0,locked:0,offline:0};c.n++;c[r.state]++});GK.qg=Object.keys(cnt).map(f=>"qg|facility|"+f)}else GK.qg=[];
  let lastG,gOpen=true;
  shown.forEach(r=>{
-  if(gm=="facility"&&r.facility!==lastG){lastG=r.facility;const gk="qg|facility|"+lastG,c=cnt[lastG];gOpen=!COLL.has(gk);let g=GRPR[gk];if(!g){g=GRPR[gk]=document.createElement("tr");g.className="grp";g.dataset.sec="qg"}g.dataset.gk=gk;
+  if(gm=="facility"&&r.facility!==lastG){lastG=r.facility;const gk="qg|facility|"+lastG,c=cnt[lastG];gOpen=OPENG.has(gk);let g=GRPR[gk];if(!g){g=GRPR[gk]=document.createElement("tr");g.className="grp";g.dataset.sec="qg"}g.dataset.gk=gk;
    g.innerHTML=`<td colspan="12"><span class="chev">${gOpen?"▾":"▸"}</span> ${esc(lastG)} <span class="m">· ${c.n} computer${c.n==1?"":"s"} · ${c.available} available · ${c.away} away · ${c.locked} locked · ${c.offline} offline</span></td>`;want.push(g)}
   if(gm=="facility"&&!gOpen)return;
   const k=r.host+"|"+ukey(r);let tr=MAIN[k];if(!tr){tr=MAIN[k]=document.createElement("tr");tr.className="mr";tr.dataset.k=k}
@@ -295,8 +295,8 @@ async function fillDetail(d){const out=d.querySelector(".dout"),u=MAIN[d.dataset
   <div class="sub">Sign-in / sign-out and status history · ${E.length} event${E.length==1?"":"s"}${E.length>300?" (latest 300 shown)":""}</div>
   <div class="card" style="max-height:340px"><table><thead><tr><th>Time</th><th>Event</th><th>Computer</th><th>Detail</th></tr></thead><tbody>${E.slice(0,300).map(x=>`<tr><td>${dt(x.ts)}</td><td class="ev-${esc(x.type)}">${esc(EVL[x.type]||x.type)}</td><td>${esc(x.host||"")}</td><td>${esc(x.detail||"")}</td></tr>`).join("")||'<tr><td class="m">No events in this range.</td></tr>'}</tbody></table></div>`;
  }catch(e){out.textContent=e.message}}
-document.addEventListener("click",e=>{const g=e.target.closest("tr.grp[data-gk]");if(g){COLL.has(g.dataset.gk)?COLL.delete(g.dataset.gk):COLL.add(g.dataset.gk);GFN[g.dataset.sec]&&GFN[g.dataset.sec]();return}
- const a=e.target.closest("a[data-gall]");if(a){e.preventDefault();const[sec,act]=a.dataset.gall.split("|");(GK[sec]||[]).forEach(k=>act=="close"?COLL.add(k):COLL.delete(k));GFN[sec]&&GFN[sec]()}});
+document.addEventListener("click",e=>{const g=e.target.closest("tr.grp[data-gk]");if(g){OPENG.has(g.dataset.gk)?OPENG.delete(g.dataset.gk):OPENG.add(g.dataset.gk);GFN[g.dataset.sec]&&GFN[g.dataset.sec]();return}
+ const a=e.target.closest("a[data-gall]");if(a){e.preventDefault();const[sec,act]=a.dataset.gall.split("|");(GK[sec]||(sec=="ag"?[...(GK.ag_app||[]),...(GK.ag_site||[]),...(GK.ag_title||[])]:[])).forEach(k=>act=="open"?OPENG.add(k):OPENG.delete(k));GFN[sec]&&GFN[sec]()}});
 const gsel=(id,opts,def)=>`<select id="${id}" title="Group by">${opts.map(([v,n])=>`<option value="${v}" ${v==def?"selected":""}>${n}</option>`).join("")}</select><span class="gctl"><a href="#" data-gall="${id}|open">Expand all</a><a href="#" data-gall="${id}|close">Collapse all</a></span>`;
 // ---- events (last hour by default) + first login of the day
 EVL.day_checkin="First login of the day";
@@ -337,7 +337,7 @@ function initSections(){
  $("evg-w").innerHTML=gsel("evg",GM,"device");$("ag-w").innerHTML=gsel("ag",GM,"device");$("rg-w").innerHTML=gsel("rg",GM,"employee");
  $("dg-w").innerHTML=gsel("dg",[["facility","Group: by facility"],["none","No grouping"]],"facility");$("qg-w").innerHTML=gsel("qg",[["none","No grouping"],["facility","Group: by facility"]],"none");
  $("evg").onchange=drawEvents;$("ag").onchange=drawActivity;$("rg").onchange=drawReport;$("dg").onchange=drawDevices;$("qg").onchange=drawLive;
- GFN.evg=drawEvents;GFN.rg=drawReport;GFN.dg=drawDevices;GFN.qg=drawLive;GFN.ag_app=GFN.ag_site=GFN.ag_title=drawActivity;
+ GFN.evg=drawEvents;GFN.rg=drawReport;GFN.dg=drawDevices;GFN.qg=drawLive;GFN.ag=GFN.ag_app=GFN.ag_site=GFN.ag_title=drawActivity;
  $("evr").onchange=()=>{$("evc").style.display=$("evr").value=="custom"?"":"none";loadEvents()};$("evf").onchange=$("evt").onchange=loadEvents;
  setRange("evf","evt",0);$("evq").oninput=drawEvents;$("evtype").onchange=drawEvents;$("evsync").onclick=()=>loadEvents();
  setRange("af","at",0);$("aq").oninput=drawActivity;$("af").onchange=$("at").onchange=loadActivity;$("async").onclick=loadActivity;
